@@ -1,0 +1,52 @@
+name: Security scan
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+  schedule:
+    - cron: '23 5 * * *'
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - run: npm ci
+
+      - name: Dependency audit
+        run: npm audit --audit-level=high
+
+      - name: No secrets committed
+        run: |
+          set -e
+          # MercadoLibre tokens, Supabase secret keys and private keys must never
+          # appear in the repository.
+          if grep -rInE '(APP_USR-[A-Za-z0-9-]{10,}|TG-[A-Za-z0-9-]{10,}|sb_secret_[A-Za-z0-9_-]{10,}|BEGIN (RSA|EC|OPENSSH) PRIVATE KEY)' \
+               --exclude-dir=node_modules --exclude-dir=.git --exclude-dir=.next .; then
+            echo "Potential secret material found."
+            exit 1
+          fi
+
+      - name: No .env committed
+        run: |
+          if git ls-files | grep -E '^\.env($|\.)' | grep -v '\.env\.example'; then
+            echo "An environment file is tracked by git."
+            exit 1
+          fi
+
+      - name: Tokens never reach the browser bundle
+        run: |
+          set -e
+          # A client module must not import the privileged Supabase client or the
+          # MercadoLibre token broker.
+          if grep -rIn "supabase/admin\|meli/token-broker" src/components src/hooks 2>/dev/null; then
+            echo "A client-side module imports server-only credentials."
+            exit 1
+          fi

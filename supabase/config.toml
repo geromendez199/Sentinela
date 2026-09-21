@@ -1,0 +1,61 @@
+project_id = "sentinela-ml"
+
+[api]
+enabled = true
+port = 54321
+schemas = ["public", "graphql_public"]
+extra_search_path = ["public", "extensions"]
+max_rows = 1000
+
+[db]
+port = 54322
+major_version = 17
+
+[studio]
+enabled = true
+port = 54323
+
+[auth]
+enabled = true
+site_url = "http://127.0.0.1:3000"
+additional_redirect_urls = ["http://127.0.0.1:3000/auth/callback"]
+jwt_expiry = 3600
+enable_signup = true
+
+[auth.email]
+enable_confirmations = false
+
+[functions.meli-webhook]
+# MercadoLibre cannot send a Supabase JWT: the route carries an unguessable
+# secret segment and validates the application_id instead.
+verify_jwt = false
+
+[functions.meli-resource-worker]
+verify_jwt = true
+
+[functions.meli-backfill-worker]
+verify_jwt = true
+
+[functions.missed-feeds-sweep]
+verify_jwt = true
+
+[functions.reputation-reconcile]
+verify_jwt = true
+
+[functions.risk-score]
+verify_jwt = true
+
+[functions.classify-text]
+verify_jwt = true
+
+[functions.root-cause-cluster]
+verify_jwt = true
+
+[functions.execute-approved-action]
+verify_jwt = true
+
+[functions.send-alert]
+verify_jwt = true
+
+[functions.retention-purge]
+verify_jwt = true

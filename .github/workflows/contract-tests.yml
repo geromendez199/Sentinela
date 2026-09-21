@@ -1,0 +1,32 @@
+name: MercadoLibre contract tests
+
+# Contract probes hit the real API with a test account, so they never run on a
+# pull request from a fork and never run automatically on push.
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '17 6 * * 1'
+
+jobs:
+  contracts:
+    runs-on: ubuntu-latest
+    environment: meli-test
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - run: npm ci
+
+      - name: Probe documented endpoints
+        run: npm run verify:contracts
+        env:
+          MELI_APP_ID: ${{ secrets.MELI_TEST_APP_ID }}
+          MELI_TEST_ACCESS_TOKEN: ${{ secrets.MELI_TEST_ACCESS_TOKEN }}
+          MELI_TEST_SELLER_ID: ${{ secrets.MELI_TEST_SELLER_ID }}
+          MELI_TEST_SHIPMENT_ID: ${{ secrets.MELI_TEST_SHIPMENT_ID }}
+          MELI_TEST_CLAIM_ID: ${{ secrets.MELI_TEST_CLAIM_ID }}
+          MELI_TEST_PACK_ID: ${{ secrets.MELI_TEST_PACK_ID }}

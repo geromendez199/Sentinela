@@ -1,0 +1,38 @@
+name: Database and RLS tests
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+
+jobs:
+  db:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Start Supabase
+        run: supabase start
+
+      - name: Apply migrations from scratch
+        run: supabase db reset --no-seed
+
+      - name: Apply seed
+        run: supabase db reset
+
+      - name: RLS and SQL tests
+        run: supabase test db
+
+      - name: Backend RPC smoke test
+        run: |
+          psql "$(supabase status --output json | jq -r '.DB_URL')" \
+            -v ON_ERROR_STOP=1 \
+            -f supabase/tests/sql/smoke_backend_rpcs.sql
+
+      - name: Stop Supabase
+        if: always()
+        run: supabase stop
