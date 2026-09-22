@@ -1,0 +1,80 @@
+name: One-shot generate Supabase types
+
+on:
+  push:
+    branches:
+      - claude/sentinela-completo-09415s
+    paths:
+      - .github/workflows/one-shot-generate-supabase-types.yml
+
+permissions:
+  contents: write
+
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: claude/sentinela-completo-09415s
+
+      - uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Start local Supabase
+        run: supabase start
+
+      - name: Reset local database
+        run: supabase db reset
+
+      - name: Generate types from local schema
+        run: supabase gen types typescript --local > src/lib/supabase/database.types.ts
+
+      - name: Guard generated type shape
+        run: |
+          grep -q '^export type Database' src/lib/supabase/database.types.ts
+          if grep -Eq '^export interface (Database|.*Row)' src/lib/supabase/database.types.ts; then
+            echo 'Generated Database/Row types must remain type aliases, not interfaces.' >&2
+            exit 1
+          fi
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Unit and integration tests
+        run: npm test
+
+      - name: RLS and SQL tests
+        run: supabase test db
+
+      - name: Build
+        run: npm run build
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: https://example.supabase.co
+          NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: sb_publishable_ci_placeholder_value
+          NEXT_PUBLIC_APP_URL: https://app.example.com
+
+      - name: Commit generated types and remove one-shot workflow
+        run: |
+          git config user.name "sentinela-ci"
+          git config user.email "actions@users.noreply.github.com"
+          git rm .github/workflows/one-shot-generate-supabase-types.yml
+          git add src/lib/supabase/database.types.ts
+          git commit -m "Regenerate Supabase types from local PG17 schema"
+          git push origin HEAD:claude/sentinela-completo-09415s
+
+      - name: Stop Supabase
+        if: always()
+        run: supabase stop
