@@ -30,32 +30,35 @@ enable_confirmations = false
 # secret segment and validates the application_id instead.
 verify_jwt = false
 
+# Internal workers are invoked by pg_cron/pg_net. They cannot present a user JWT;
+# each handler validates X-Sentinela-Internal-Key against the Vault-held secret
+# through backend_verify_edge_invocation_key before doing any work.
 [functions.meli-resource-worker]
-verify_jwt = true
+verify_jwt = false
 
 [functions.meli-backfill-worker]
-verify_jwt = true
+verify_jwt = false
 
 [functions.missed-feeds-sweep]
-verify_jwt = true
+verify_jwt = false
 
 [functions.reputation-reconcile]
-verify_jwt = true
+verify_jwt = false
 
 [functions.risk-score]
-verify_jwt = true
+verify_jwt = false
 
 [functions.classify-text]
-verify_jwt = true
+verify_jwt = false
 
 [functions.root-cause-cluster]
-verify_jwt = true
+verify_jwt = false
 
 [functions.execute-approved-action]
-verify_jwt = true
+verify_jwt = false
 
 [functions.send-alert]
-verify_jwt = true
+verify_jwt = false
 
 [functions.retention-purge]
-verify_jwt = true
+verify_jwt = false
