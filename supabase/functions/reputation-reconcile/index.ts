@@ -1,4 +1,5 @@
 import { adminClient, rpc } from '../_shared/db.ts';
+import { requireInternalInvocation } from '../_shared/internal-auth.ts';
 import { MeliClient } from '../_shared/meli-client.ts';
 import { log } from '../_shared/logging.ts';
 
@@ -71,11 +72,7 @@ function healthyToRecover(n: number, v: number, threshold: number, comparator: '
   return 1_000_000;
 }
 
-async function reconcileAccount(account: {
-  id: string;
-  org_id: string;
-  site_id: string;
-}): Promise<void> {
+async function reconcileAccount(account: { id: string; org_id: string; site_id: string }): Promise<void> {
   const client = new MeliClient(account.id);
 
   const { data: accountRow } = await adminClient()
@@ -110,9 +107,7 @@ async function reconcileAccount(account: {
 
   const metrics = (reputation.metrics ?? {}) as Record<string, { period?: string; rate?: number; value?: number }>;
 
-  // Runtime rule: the official period wins over any locally inferred window.
-  const windowDays =
-    parsePeriodDays(metrics.claims?.period) ?? ruleSet.low_volume_window_days;
+  const windowDays = parsePeriodDays(metrics.claims?.period) ?? ruleSet.low_volume_window_days;
   const windowStart = new Date(Date.now() - windowDays * 86_400_000).toISOString();
   const windowEnd = new Date().toISOString();
 
@@ -171,7 +166,6 @@ async function reconcileAccount(account: {
     }
   }
 
-  // Three consecutive snapshots outside tolerance degrade the twin.
   const { data: previous } = await adminClient()
     .from('reputation_computations')
     .select('drift, fidelity')
@@ -185,8 +179,7 @@ async function reconcileAccount(account: {
   }).length;
 
   const exceedsNow = drift.some((entry) => entry.exceedsTolerance === true);
-  const fidelity =
-    drift.length === 0 ? 'initializing' : exceedsNow && previousExceeded >= 2 ? 'degraded' : 'calibrated';
+  const fidelity = drift.length === 0 ? 'initializing' : exceedsNow && previousExceeded >= 2 ? 'degraded' : 'calibrated';
 
   await rpc('backend_store_reputation_computation', {
     p_org_id: account.org_id,
@@ -209,6 +202,9 @@ async function reconcileAccount(account: {
 }
 
 Deno.serve(async (request) => {
+  const authError = await requireInternalInvocation(request);
+  if (authError) return authError;
+
   const body = (await request.json().catch(() => ({}))) as { priority?: string };
 
   const query = adminClient()
