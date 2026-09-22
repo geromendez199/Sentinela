@@ -1,4 +1,5 @@
 import { adminClient } from '../_shared/db.ts';
+import { requireInternalInvocation } from '../_shared/internal-auth.ts';
 import { log } from '../_shared/logging.ts';
 
 /**
@@ -30,7 +31,10 @@ const TIME_COLUMN: Record<string, string> = {
   internal_metrics: 'recorded_at',
 };
 
-Deno.serve(async () => {
+Deno.serve(async (request) => {
+  const authError = await requireInternalInvocation(request);
+  if (authError) return authError;
+
   const { data: organizations } = await adminClient().from('organizations').select('id');
   const { data: policies } = await adminClient()
     .from('retention_policies')
