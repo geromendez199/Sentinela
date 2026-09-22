@@ -1,20 +1,24 @@
 -- Organization role-management RPC security tests.
 begin;
-select plan(11);
+select plan(15);
 
 insert into auth.users(id) values
   ('00000000-0000-4000-8000-000000000011'),
   ('00000000-0000-4000-8000-000000000012'),
   ('00000000-0000-4000-8000-000000000013'),
   ('00000000-0000-4000-8000-000000000014'),
-  ('00000000-0000-4000-8000-000000000015');
+  ('00000000-0000-4000-8000-000000000015'),
+  ('00000000-0000-4000-8000-000000000016'),
+  ('00000000-0000-4000-8000-000000000017');
 
 insert into public.organizations(id, name, slug, created_by) values
-  ('11000000-0000-4000-8000-000000000001', 'Roles Org', 'roles-org', '00000000-0000-4000-8000-000000000011');
+  ('11000000-0000-4000-8000-000000000001', 'Roles Org', 'roles-org', '00000000-0000-4000-8000-000000000011'),
+  ('11000000-0000-4000-8000-000000000002', 'Roles Org B', 'roles-org-b', '00000000-0000-4000-8000-000000000017');
 
 insert into public.organization_members(org_id, user_id, role) values
   ('11000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-000000000011', 'owner'),
-  ('11000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-000000000013', 'viewer');
+  ('11000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-000000000013', 'viewer'),
+  ('11000000-0000-4000-8000-000000000002', '00000000-0000-4000-8000-000000000017', 'owner');
 
 set local role authenticated;
 set local request.jwt.claims = '{"sub":"00000000-0000-4000-8000-000000000011","role":"authenticated"}';
@@ -109,6 +113,46 @@ select throws_ok(
   )$$,
   'P0001', 'insufficient_role',
   'viewer cannot manage membership'
+);
+
+-- A logged-in user with no membership in the target org must be rejected.
+set local request.jwt.claims = '{"sub":"00000000-0000-4000-8000-000000000016","role":"authenticated"}';
+select throws_ok(
+  $$select public.set_organization_member_role(
+    '11000000-0000-4000-8000-000000000001',
+    '00000000-0000-4000-8000-000000000016',
+    'owner'
+  )$$,
+  'P0001', 'insufficient_role',
+  'non-member cannot add themself as owner'
+);
+select throws_ok(
+  $$select public.remove_organization_member(
+    '11000000-0000-4000-8000-000000000001',
+    '00000000-0000-4000-8000-000000000013'
+  )$$,
+  'P0001', 'insufficient_role',
+  'non-member cannot remove a member'
+);
+
+-- Being an owner in another tenant grants no authority over this organization.
+set local request.jwt.claims = '{"sub":"00000000-0000-4000-8000-000000000017","role":"authenticated"}';
+select throws_ok(
+  $$select public.set_organization_member_role(
+    '11000000-0000-4000-8000-000000000001',
+    '00000000-0000-4000-8000-000000000017',
+    'owner'
+  )$$,
+  'P0001', 'insufficient_role',
+  'owner of org B cannot add themself to org A'
+);
+select throws_ok(
+  $$select public.remove_organization_member(
+    '11000000-0000-4000-8000-000000000001',
+    '00000000-0000-4000-8000-000000000013'
+  )$$,
+  'P0001', 'insufficient_role',
+  'owner of org B cannot remove a member from org A'
 );
 
 -- Owner can add another owner; ownership invariant remains auditable.
