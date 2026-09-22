@@ -1,4 +1,5 @@
 import { adminClient, rpc } from '../_shared/db.ts';
+import { requireInternalInvocation } from '../_shared/internal-auth.ts';
 import { log } from '../_shared/logging.ts';
 import { deleteMessage, readBatch, requeue } from '../_shared/queue.ts';
 
@@ -58,7 +59,6 @@ async function activeModel(orgId: string): Promise<ModelVersion | null> {
     .select('id, intercept, weights, thresholds, org_id')
     .eq('active', true)
     .or(`org_id.eq.${orgId},org_id.is.null`)
-    // An org-specific model wins over the global baseline.
     .order('org_id', { ascending: false, nullsFirst: false })
     .limit(1);
   return (data?.[0] as ModelVersion | undefined) ?? null;
@@ -96,8 +96,6 @@ async function buildFeatures(job: Job): Promise<Record<string, number> | null> {
     ? (Date.parse(shipment.expected_dispatch_at) - Date.now()) / 60_000
     : null;
 
-  // Buyer-message signals travel through the pack's messages, then their
-  // classifications: ai_classifications is keyed by source, not by pack.
   const { data: packMessages } = order.pack_id
     ? await adminClient()
         .from('messages')
@@ -126,7 +124,6 @@ async function buildFeatures(job: Job): Promise<Record<string, number> | null> {
     | { intent?: string; urgency?: number; sentiment?: number }
     | undefined;
 
-  // response_latency: minutes the newest buyer message has gone unanswered.
   const newestBuyerAt = (packMessages ?? [])[0]?.date_created ?? null;
   const { data: newestSeller } = order.pack_id
     ? await adminClient()
@@ -238,6 +235,9 @@ async function scoreJob(job: Job): Promise<void> {
 }
 
 Deno.serve(async (request) => {
+  const authError = await requireInternalInvocation(request);
+  if (authError) return authError;
+
   const body = (await request.json().catch(() => ({}))) as { batch_size?: number };
   const messages = await readBatch<Job>(QUEUE, 60, Math.min(100, body.batch_size ?? 50));
 
