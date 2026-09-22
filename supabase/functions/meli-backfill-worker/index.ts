@@ -1,6 +1,7 @@
 import { adminClient } from '../_shared/db.ts';
 import { MeliClient } from '../_shared/meli-client.ts';
 import { RetryableError } from '../_shared/errors.ts';
+import { requireInternalInvocation } from '../_shared/internal-auth.ts';
 import { log } from '../_shared/logging.ts';
 
 /**
@@ -95,7 +96,6 @@ async function backfillOrders(client: MeliClient, job: SyncJob): Promise<void> {
       },
     );
 
-    // A window near the pagination ceiling is split, never paged past it.
     if (probe.paging.total >= ORDERS_SAFETY_CEILING && windowDays > 1) {
       windowDays = Math.max(1, Math.floor(windowDays / 2));
       continue;
@@ -160,7 +160,6 @@ async function backfillOrders(client: MeliClient, job: SyncJob): Promise<void> {
         Math.max(1, Date.parse(job.range_end) - Date.parse(job.range_start)),
     );
     processed = 0;
-    // Bounded work per invocation: the cron pulse resumes from the checkpoint.
     return;
   }
 
@@ -198,7 +197,6 @@ async function backfillClaims(client: MeliClient, job: SyncJob): Promise<void> {
       },
     );
 
-    // offset+limit must stay under 10000: split by day, then by hour if needed.
     if (probe.paging.total >= CLAIMS_SAFETY_CEILING) {
       windowDays = windowDays > 1 ? Math.max(1, Math.floor(windowDays / 2)) : windowDays;
       if (windowDays <= 1) {
@@ -256,6 +254,9 @@ async function backfillClaims(client: MeliClient, job: SyncJob): Promise<void> {
 }
 
 Deno.serve(async (request) => {
+  const authError = await requireInternalInvocation(request);
+  if (authError) return authError;
+
   const body = (await request.json().catch(() => ({}))) as { max_chunks?: number };
   const maxChunks = Math.min(10, Math.max(1, body.max_chunks ?? 4));
 
@@ -269,7 +270,6 @@ Deno.serve(async (request) => {
       if (job.resource_kind === 'orders') await backfillOrders(client, job);
       else if (job.resource_kind === 'claims') await backfillClaims(client, job);
       else {
-        // Other resources are discovered from orders and claims rather than scanned.
         await adminClient()
           .from('sync_jobs')
           .update({ status: 'done', progress: 1, updated_at: new Date().toISOString() })
