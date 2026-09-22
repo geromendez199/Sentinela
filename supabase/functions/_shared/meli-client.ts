@@ -18,6 +18,10 @@ export interface RequestOptions {
 export class MeliClient {
   constructor(private readonly accountId: string) {}
 
+  async get<T>(path: string, options: Omit<RequestOptions, 'method'>): Promise<T> {
+    return this.request<T>(path, { ...options, method: 'GET' });
+  }
+
   async request<T>(path: string, options: RequestOptions): Promise<T> {
     const resourceClass = options.resourceClass ?? 'default';
     await acquireBudget(this.accountId, resourceClass);
