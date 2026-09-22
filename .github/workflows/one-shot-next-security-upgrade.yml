@@ -1,0 +1,58 @@
+name: One-shot Next security upgrade
+
+on:
+  push:
+    branches:
+      - claude/sentinela-completo-09415s
+    paths:
+      - .github/workflows/one-shot-next-security-upgrade.yml
+
+permissions:
+  contents: write
+
+jobs:
+  upgrade:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: claude/sentinela-completo-09415s
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Install current lockfile
+        run: npm ci
+
+      - name: Upgrade patched Next.js maintenance release
+        run: npm install --save-exact next@15.5.25 eslint-config-next@15.5.25
+
+      - name: Security audit (high and critical)
+        run: npm audit --audit-level=high
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Unit and integration tests
+        run: npm test
+
+      - name: Build
+        run: npm run build
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: https://example.supabase.co
+          NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: sb_publishable_ci_placeholder_value
+          NEXT_PUBLIC_APP_URL: https://app.example.com
+
+      - name: Commit regenerated dependency lock and remove one-shot workflow
+        run: |
+          git config user.name "sentinela-ci"
+          git config user.email "actions@users.noreply.github.com"
+          git rm .github/workflows/one-shot-next-security-upgrade.yml
+          git add package.json package-lock.json
+          git commit -m "Patch Next.js maintenance release"
+          git push origin HEAD:claude/sentinela-completo-09415s
