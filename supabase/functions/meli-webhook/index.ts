@@ -1,5 +1,5 @@
 import { adminClient, rpc } from '../_shared/db.ts';
-import { loadEnv } from '../_shared/env.ts';
+import { loadWebhookEnv } from '../_shared/env.ts';
 import { log } from '../_shared/logging.ts';
 import { sha256Hex } from '../_shared/pii.ts';
 
@@ -43,18 +43,16 @@ function ack(body: Record<string, unknown>, status = 200): Response {
   });
 }
 
-/** Stable key when the payload carries no _id. */
 function stableActions(actions: string[] | undefined): string {
   return [...(actions ?? [])].sort().join(',');
 }
 
 Deno.serve(async (request) => {
   const startedAt = Date.now();
-  const env = loadEnv();
+  const env = loadWebhookEnv();
 
   if (request.method !== 'POST') return ack({ error: 'method_not_allowed' }, 405);
 
-  // The route carries an unguessable secret segment.
   const segments = new URL(request.url).pathname.split('/').filter(Boolean);
   if (segments[segments.length - 1] !== env.webhookRouteSecret) {
     return ack({ error: 'not_found' }, 404);
@@ -89,7 +87,6 @@ Deno.serve(async (request) => {
     .maybeSingle();
 
   if (!account) {
-    // Unknown seller: record as a security event, never process it.
     await adminClient().from('webhook_events').insert({
       event_key: `unknown:${sellerId}:${payload.resource}:${payload.sent ?? ''}`,
       topic: payload.topic,
@@ -129,7 +126,6 @@ Deno.serve(async (request) => {
 
     return ack({ status: inserted ? 'queued' : 'duplicate' });
   } catch (error) {
-    // Returning 200 here would drop the event; MercadoLibre retries on 5xx.
     log('error', 'webhook_ingest_failed', { topic: payload.topic, error: String(error) });
     return ack({ error: 'ingest_failed' }, 500);
   }
