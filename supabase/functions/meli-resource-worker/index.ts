@@ -1,6 +1,7 @@
 import { adminClient } from '../_shared/db.ts';
 import { MeliClient } from '../_shared/meli-client.ts';
 import { AccountRestrictedError, ReconnectRequiredError, RetryableError } from '../_shared/errors.ts';
+import { requireInternalInvocation } from '../_shared/internal-auth.ts';
 import { log } from '../_shared/logging.ts';
 import { deleteMessage, readBatch, requeue, send } from '../_shared/queue.ts';
 import { sanitizeText } from '../_shared/pii.ts';
@@ -61,7 +62,6 @@ async function handleOrder(client: MeliClient, message: EventMessage, orderId: s
   });
   if (error) throw new RetryableError(`upsert_order_failed:${error.code ?? 'unknown'}`);
 
-  // Material change: the risk score for this order/pack is stale.
   await send('derived_jobs', {
     job: 'risk_score',
     org_id: message.org_id,
@@ -76,14 +76,12 @@ async function handleShipment(client: MeliClient, message: EventMessage, shipmen
     headers: { 'x-format-new': 'true' },
   });
 
-  // The SLA resource is authoritative: never rebuild a holiday calendar (rule 14).
   let sla: Record<string, unknown> | null = null;
   try {
     sla = await client.get<Record<string, unknown>>(`/shipments/${shipmentId}/sla`, {
       endpointClass: 'shipments.sla',
     });
   } catch (error) {
-    // Documented as unavailable for Full and cancelled shipments.
     if (!(error instanceof Error && error.message.startsWith('meli_not_found'))) throw error;
   }
 
@@ -109,7 +107,6 @@ async function handleClaim(client: MeliClient, message: EventMessage, claimId: s
     endpointClass: 'claims.detail',
   });
 
-  // The official endpoint decides whether this claim counts for reputation.
   let affects: Record<string, unknown> | null = null;
   try {
     affects = await client.get<Record<string, unknown>>(
@@ -149,7 +146,6 @@ async function handleMessages(client: MeliClient, message: EventMessage, packId:
     {
       endpointClass: 'messages.get',
       resourceClass: 'messaging',
-      // Ingestion must not mark the buyer's message as read.
       query: { tag: 'post_sale', mark_as_read: false },
     },
   );
@@ -242,6 +238,9 @@ async function process(message: EventMessage): Promise<void> {
 }
 
 Deno.serve(async (request) => {
+  const authError = await requireInternalInvocation(request);
+  if (authError) return authError;
+
   const body = (await request.json().catch(() => ({}))) as { batch_size?: number };
   const batchSize = Math.min(50, Math.max(1, body.batch_size ?? 25));
 
@@ -263,7 +262,6 @@ Deno.serve(async (request) => {
         continue;
       }
       if (error instanceof ReconnectRequiredError || error instanceof AccountRestrictedError) {
-        // The account state already changed; stop retrying this message.
         await markProcessed(entry.message.event_id, 'failed', error.message);
         await deleteMessage(QUEUE, entry.msg_id);
         continue;
