@@ -1,8 +1,9 @@
-import { adminClient, rpc } from '../_shared/db.ts';
-import { loadEnv } from '../_shared/env.ts';
-import { MeliClient } from '../_shared/meli-client.ts';
+import { adminClient } from '../_shared/db.ts';
+import { loadWritePolicyEnv } from '../_shared/env.ts';
 import { RetryableError } from '../_shared/errors.ts';
+import { requireInternalInvocation } from '../_shared/internal-auth.ts';
 import { log } from '../_shared/logging.ts';
+import { MeliClient } from '../_shared/meli-client.ts';
 import { deleteMessage, readBatch, requeue } from '../_shared/queue.ts';
 
 /**
@@ -47,11 +48,7 @@ interface Draft {
 async function block(draft: Draft, reason: string): Promise<void> {
   await adminClient()
     .from('action_drafts')
-    .update({
-      status: 'blocked_policy',
-      error_code: reason,
-      updated_at: new Date().toISOString(),
-    })
+    .update({ status: 'blocked_policy', error_code: reason, updated_at: new Date().toISOString() })
     .eq('id', draft.id);
 
   await adminClient().from('security_audit_log').insert({
@@ -75,8 +72,6 @@ async function executeSendMessage(draft: Draft, client: MeliClient): Promise<Rec
   if (!account) throw new Error('account_missing');
   if (!draft.pack_id) throw new Error('pack_missing');
 
-  // Re-read the action guide right before sending: an approved text does not
-  // mean the message is still allowed (rule 15).
   const guide = await client.get<{
     blocked?: boolean;
     options?: Array<{ id?: string; text?: string; template_id?: string }>;
@@ -130,23 +125,19 @@ async function executeSendMessage(draft: Draft, client: MeliClient): Promise<Rec
     resourceClass: 'messaging',
     query: { tag: 'post_sale' },
     idempotencyKey: draft.idempotency_key,
-    body: {
-      from: { user_id: account.seller_id },
-      text,
-    },
+    body: { from: { user_id: account.seller_id }, text },
   });
 }
 
 async function executePauseItem(draft: Draft, client: MeliClient): Promise<Record<string, unknown>> {
   if (!draft.item_id) throw new Error('item_missing');
 
-  // Refetch: pausing an already paused or closed item is not the approved action.
   const item = await client.get<{ status?: string }>(`/items/${draft.item_id}`, {
     endpointClass: 'items.get',
   });
   const approvedStatus = (draft.policy_snapshot as { item_status?: string }).item_status;
   if (approvedStatus && item.status !== approvedStatus) {
-    throw new PolicyError(`policy_changed:item_status`);
+    throw new PolicyError('policy_changed:item_status');
   }
   if (item.status === 'paused') throw new PolicyError('item_already_paused');
 
@@ -166,7 +157,7 @@ class PolicyError extends Error {
 }
 
 async function execute(job: Job): Promise<void> {
-  const env = loadEnv();
+  const { writesEnabled } = loadWritePolicyEnv();
 
   const { data } = await adminClient()
     .from('action_drafts')
@@ -179,13 +170,12 @@ async function execute(job: Job): Promise<void> {
   if (!draft) return;
   if (draft.status !== 'executing' && draft.status !== 'approved') return;
 
-  // Human approval is a hard precondition for every MercadoLibre write.
   const isWrite = ['SEND_POST_SALE_MESSAGE', 'PAUSE_ITEM', 'UPDATE_STOCK', 'EXECUTE_CLAIM_ACTION'].includes(
     draft.kind,
   );
 
   if (isWrite) {
-    if (!env.writesEnabled) return block(draft, 'writes_disabled_globally');
+    if (!writesEnabled) return block(draft, 'writes_disabled_globally');
     if (!draft.approved_by || !draft.approved_at) return block(draft, 'human_approval_missing');
 
     const { data: account } = await adminClient()
@@ -211,7 +201,6 @@ async function execute(job: Job): Promise<void> {
     .select('id')
     .maybeSingle();
 
-  // A unique-violation means this exact write was already attempted.
   if (!execution) {
     log('info', 'action_execution_deduped', { action_id: draft.id });
     return;
@@ -240,12 +229,7 @@ async function execute(job: Job): Promise<void> {
 
     await adminClient()
       .from('action_drafts')
-      .update({
-        status: 'executed',
-        executed_at: new Date().toISOString(),
-        external_result: result,
-        updated_at: new Date().toISOString(),
-      })
+      .update({ status: 'executed', executed_at: new Date().toISOString(), external_result: result, updated_at: new Date().toISOString() })
       .eq('id', draft.id);
 
     await adminClient()
@@ -276,11 +260,7 @@ async function execute(job: Job): Promise<void> {
 
     await adminClient()
       .from('action_drafts')
-      .update({
-        status: 'failed',
-        error_code: String(error).slice(0, 100),
-        updated_at: new Date().toISOString(),
-      })
+      .update({ status: 'failed', error_code: String(error).slice(0, 100), updated_at: new Date().toISOString() })
       .eq('id', draft.id);
 
     await adminClient()
@@ -291,6 +271,9 @@ async function execute(job: Job): Promise<void> {
 }
 
 Deno.serve(async (request) => {
+  const authError = await requireInternalInvocation(request);
+  if (authError) return authError;
+
   const body = (await request.json().catch(() => ({}))) as { batch_size?: number };
   const messages = await readBatch<Job>(QUEUE, 120, Math.min(20, body.batch_size ?? 10));
 
