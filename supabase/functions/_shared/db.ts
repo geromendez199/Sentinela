@@ -1,9 +1,9 @@
 import { createClient, type SupabaseClient } from 'jsr:@supabase/supabase-js@2';
-import { loadEnv } from './env.ts';
+import { loadSupabaseEnv } from './env.ts';
 
 /** Privileged client. RLS is bypassed, so every query scopes org_id itself. */
 export function adminClient(): SupabaseClient {
-  const env = loadEnv();
+  const env = loadSupabaseEnv();
   return createClient(env.supabaseUrl, env.supabaseSecretKey, {
     auth: { persistSession: false, autoRefreshToken: false },
   });
