@@ -5,7 +5,7 @@
 -- schemas, Vault or MercadoLibre tokens.
 
 begin;
-select plan(14);
+select plan(16);
 
 -- Two organizations, two users, two linked accounts.
 insert into auth.users(id) values
@@ -25,8 +25,13 @@ insert into public.meli_accounts(id, org_id, seller_id, site_id, status) values
   ('b1000000-0000-0000-0000-00000000000b', 'b0000000-0000-0000-0000-00000000000b', 222, 'MLB', 'active');
 
 insert into public.orders(org_id, meli_account_id, order_id, status, date_created, source_last_updated) values
-  ('a0000000-0000-0000-0000-00000000000a', 'a1000000-0000-0000-0000-00000000000a', 1, 'paid', now(), now()),
+  ('a0000000-0000-0000-0000-00000000000a', 'a1000000-0000-0000-00000000000a', 1, 'paid', now(), now()),
   ('b0000000-0000-0000-0000-00000000000b', 'b1000000-0000-0000-0000-00000000000b', 2, 'paid', now(), now());
+
+-- Also exercise a security_invoker view: these rows must remain tenant-isolated.
+insert into public.reputation_snapshots(org_id, meli_account_id, level_id, sales_completed) values
+  ('a0000000-0000-0000-0000-00000000000a', 'a1000000-0000-0000-0000-00000000000a', '5_green', 101),
+  ('b0000000-0000-0000-0000-00000000000b', 'b1000000-0000-0000-0000-00000000000b', '1_red', 202);
 
 -- Act as the owner of org A.
 set local role authenticated;
@@ -36,6 +41,7 @@ select is((select count(*)::int from public.organizations), 1, 'org A sees only 
 select is((select count(*)::int from public.orders), 1, 'org A sees only its own orders');
 select is((select count(*)::int from public.meli_accounts), 1, 'org A sees only its own MercadoLibre account');
 select is((select order_id from public.orders), 1::bigint, 'the visible order belongs to org A');
+select is((select count(*)::int from public.latest_reputation), 1, 'security_invoker reputation view sees only org A');
 
 -- Cross-organization reads return zero rows, never another org's data.
 select is(
@@ -53,11 +59,16 @@ select throws_ok(
   'authenticated cannot insert into the orders mirror'
 );
 
-select throws_ok(
-  $$update public.meli_accounts set status = 'active'$$,
-  null,
-  null,
-  'authenticated cannot mutate meli_accounts'
+-- PostgreSQL RLS UPDATE without an applicable policy is intentionally silent:
+-- the statement succeeds but updates zero rows. Assert both properties.
+select lives_ok(
+  $$update public.meli_accounts set status = 'degraded'$$,
+  'authenticated UPDATE on meli_accounts is silently filtered by RLS'
+);
+select is(
+  (select status::text from public.meli_accounts),
+  'active',
+  'authenticated cannot mutate the visible meli_account through direct UPDATE'
 );
 
 -- Private schema, Vault and token RPCs are unreachable from the browser role.
