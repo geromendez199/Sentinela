@@ -1,5 +1,6 @@
 import { adminClient } from '../_shared/db.ts';
-import { loadEnv } from '../_shared/env.ts';
+import { loadAiEnv } from '../_shared/env.ts';
+import { requireInternalInvocation } from '../_shared/internal-auth.ts';
 import { log } from '../_shared/logging.ts';
 import { sanitizeText, sha256Hex } from '../_shared/pii.ts';
 import { deleteMessage, readBatch, requeue } from '../_shared/queue.ts';
@@ -72,7 +73,7 @@ function validate(payload: unknown): Classification {
 }
 
 async function callProvider(siteId: string, source: string, text: string): Promise<Classification> {
-  const env = loadEnv();
+  const env = loadAiEnv();
   if (env.aiProvider !== 'anthropic' || !env.aiApiKey) throw new Error('ai_provider_disabled');
 
   const response = await fetch('https://api.anthropic.com/v1/messages', {
@@ -111,6 +112,7 @@ async function callProvider(siteId: string, source: string, text: string): Promi
 }
 
 async function classifyPack(job: Job): Promise<number> {
+  const env = loadAiEnv();
   const { data: account } = await adminClient()
     .from('meli_accounts')
     .select('site_id')
@@ -133,9 +135,8 @@ async function classifyPack(job: Job): Promise<number> {
     const text = message.text_sanitized ?? '';
     if (text.trim().length < 3) continue;
 
-    // Defence in depth: the text was sanitized at ingestion, sanitize again.
     const sanitized = sanitizeText(text);
-    const hash = await sha256Hex(`${SCHEMA_VERSION}|${loadEnv().aiClassifierModel}|${sanitized.text}`);
+    const hash = await sha256Hex(`${SCHEMA_VERSION}|${env.aiClassifierModel}|${sanitized.text}`);
 
     const { data: existing } = await adminClient()
       .from('ai_classifications')
@@ -165,8 +166,8 @@ async function classifyPack(job: Job): Promise<number> {
         meli_account_id: job.meli_account_id,
         source_type: 'message',
         source_id: message.message_id,
-        provider: loadEnv().aiProvider,
-        model: loadEnv().aiClassifierModel,
+        provider: env.aiProvider,
+        model: env.aiClassifierModel,
         schema_version: SCHEMA_VERSION,
         intent: classification.intent,
         sentiment: classification.sentiment,
@@ -193,6 +194,9 @@ async function classifyPack(job: Job): Promise<number> {
 }
 
 Deno.serve(async (request) => {
+  const authError = await requireInternalInvocation(request);
+  if (authError) return authError;
+
   const body = (await request.json().catch(() => ({}))) as { batch_size?: number };
   const messages = await readBatch<Job>(QUEUE, 120, Math.min(50, body.batch_size ?? 25));
 
