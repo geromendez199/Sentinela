@@ -1,5 +1,5 @@
 import { adminClient, rpc } from './db.ts';
-import { loadEnv } from './env.ts';
+import { loadMeliOAuthEnv } from './env.ts';
 import { ReconnectRequiredError, RetryableError, isInvalidGrant } from './errors.ts';
 import { log } from './logging.ts';
 
@@ -34,7 +34,6 @@ export async function getValidAccessToken(accountId: string): Promise<string> {
     throw new ReconnectRequiredError(material.account_status);
   }
 
-  // Never a hardcoded TTL: expires_at comes from the expires_in of the grant.
   const skewMs = 90_000 + Math.random() * 30_000;
   if (Date.parse(material.expires_at) - Date.now() > skewMs) return material.access_token;
 
@@ -55,7 +54,7 @@ export async function getValidAccessToken(accountId: string): Promise<string> {
     throw new RetryableError('refresh_in_progress');
   }
 
-  const env = loadEnv();
+  const env = loadMeliOAuthEnv();
   try {
     const response = await fetch(TOKEN_URL, {
       method: 'POST',
@@ -92,7 +91,6 @@ export async function getValidAccessToken(accountId: string): Promise<string> {
       throw new RetryableError('refresh_response_incomplete');
     }
 
-    // Commit before doing anything else: an unpersisted rotated token is a lost account.
     let committed = false;
     for (let attempt = 1; attempt <= 5 && !committed; attempt++) {
       try {
