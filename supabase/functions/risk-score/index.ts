@@ -9,11 +9,14 @@ import { deleteMessage, readBatch, requeue } from '../_shared/queue.ts';
  * Explainable heuristic v0: normalized features, versioned weights, every
  * contribution persisted. It is a risk score, not a calibrated probability.
  *
- * Leakage guard: an open claim on the same order is never a feature for
- * predicting claim opening on that order.
+ * Leakage guard: a claim on the order currently being scored is never used as
+ * a predictor for that same order. Historical rates explicitly exclude it.
  */
 
 const QUEUE = 'derived_jobs';
+const HISTORY_DAYS = 60;
+const CAPACITY_DAYS = 7;
+const HISTORY_SAMPLE_LIMIT = 1000;
 
 interface Job {
   job: string;
@@ -28,6 +31,20 @@ interface ModelVersion {
   intercept: number;
   weights: Record<string, number>;
   thresholds: { low: number; medium: number; high: number };
+}
+
+interface OrderContext {
+  order_id: number;
+  pack_id: number | null;
+  shipment_id: number | null;
+  status: string;
+  date_created: string;
+}
+
+interface CurrentItem {
+  item_id: string;
+  user_product_id: string | null;
+  seller_sku_hash: string | null;
 }
 
 const clamp01 = (value: number) => (Number.isFinite(value) ? Math.min(1, Math.max(0, value)) : 0);
@@ -51,7 +68,15 @@ const EXCEPTION_SUBSTATUS = new Set([
   'stale',
   'not_delivered',
   'shipment_stopped',
+  'waiting_for_withdrawal',
 ]);
+
+async function sha256Hex(value: string): Promise<string> {
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(value));
+  return Array.from(new Uint8Array(digest))
+    .map((byte) => byte.toString(16).padStart(2, '0'))
+    .join('');
+}
 
 async function activeModel(orgId: string): Promise<ModelVersion | null> {
   const { data } = await adminClient()
@@ -64,6 +89,144 @@ async function activeModel(orgId: string): Promise<ModelVersion | null> {
   return (data?.[0] as ModelVersion | undefined) ?? null;
 }
 
+async function recentOrderIds(accountId: string, excludeOrderId: number): Promise<number[]> {
+  const since = new Date(Date.now() - HISTORY_DAYS * 86_400_000).toISOString();
+  const { data, error } = await adminClient()
+    .from('orders')
+    .select('order_id')
+    .eq('meli_account_id', accountId)
+    .gte('date_created', since)
+    .neq('order_id', excludeOrderId)
+    .order('date_created', { ascending: false })
+    .limit(HISTORY_SAMPLE_LIMIT);
+  if (error) throw new Error(`risk_history_orders_failed:${error.code ?? 'unknown'}`);
+  return (data ?? []).map((row) => Number(row.order_id)).filter(Number.isFinite);
+}
+
+async function claimRateForOrders(accountId: string, orderIds: number[]): Promise<number | null> {
+  if (orderIds.length === 0) return null;
+  const { data, error } = await adminClient()
+    .from('claims')
+    .select('order_id')
+    .eq('meli_account_id', accountId)
+    .eq('affects_reputation', 'affected')
+    .in('order_id', orderIds);
+  if (error) throw new Error(`risk_history_claims_failed:${error.code ?? 'unknown'}`);
+  const claimed = new Set((data ?? []).map((row) => Number(row.order_id)).filter(Number.isFinite));
+  return claimed.size / orderIds.length;
+}
+
+async function itemAndSkuRates(
+  accountId: string,
+  current: CurrentItem | null,
+  historyOrderIds: number[],
+): Promise<{ itemRate: number | null; skuRate: number | null; categoryRate: number | null }> {
+  if (!current || historyOrderIds.length === 0) return { itemRate: null, skuRate: null, categoryRate: null };
+
+  const { data: rows, error } = await adminClient()
+    .from('order_items')
+    .select('order_id, item_id, seller_sku_hash')
+    .eq('meli_account_id', accountId)
+    .in('order_id', historyOrderIds)
+    .limit(5000);
+  if (error) throw new Error(`risk_history_items_failed:${error.code ?? 'unknown'}`);
+
+  const itemOrders = new Set<number>();
+  const skuOrders = new Set<number>();
+  for (const row of rows ?? []) {
+    const orderId = Number(row.order_id);
+    if (row.item_id === current.item_id) itemOrders.add(orderId);
+    if (current.seller_sku_hash && row.seller_sku_hash === current.seller_sku_hash) skuOrders.add(orderId);
+  }
+
+  const { data: itemRow } = await adminClient()
+    .from('items')
+    .select('category_id')
+    .eq('meli_account_id', accountId)
+    .eq('item_id', current.item_id)
+    .maybeSingle();
+
+  let categoryOrders = new Set<number>();
+  if (itemRow?.category_id) {
+    const { data: categoryItems } = await adminClient()
+      .from('items')
+      .select('item_id')
+      .eq('meli_account_id', accountId)
+      .eq('category_id', itemRow.category_id)
+      .limit(250);
+    const categoryItemIds = new Set((categoryItems ?? []).map((item) => String(item.item_id)));
+    categoryOrders = new Set(
+      (rows ?? [])
+        .filter((row) => categoryItemIds.has(String(row.item_id)))
+        .map((row) => Number(row.order_id)),
+    );
+  }
+
+  const [itemRate, skuRate, categoryRate] = await Promise.all([
+    claimRateForOrders(accountId, [...itemOrders]),
+    claimRateForOrders(accountId, [...skuOrders]),
+    claimRateForOrders(accountId, [...categoryOrders]),
+  ]);
+  return { itemRate, skuRate, categoryRate };
+}
+
+async function stockSignals(
+  accountId: string,
+  current: CurrentItem | null,
+): Promise<{ published: number | null; operational: number | null; staleMinutes: number | null }> {
+  if (!current) return { published: null, operational: null, staleMinutes: null };
+
+  const { data: item } = await adminClient()
+    .from('items')
+    .select('available_quantity, user_product_id, last_synced_at')
+    .eq('meli_account_id', accountId)
+    .eq('item_id', current.item_id)
+    .maybeSingle();
+
+  const userProductId = current.user_product_id ?? item?.user_product_id ?? null;
+  if (!userProductId) {
+    return {
+      published: item?.available_quantity ?? null,
+      operational: item?.available_quantity ?? null,
+      staleMinutes: item?.last_synced_at ? Math.max(0, (Date.now() - Date.parse(item.last_synced_at)) / 60_000) : null,
+    };
+  }
+
+  const { data: stock } = await adminClient()
+    .from('user_product_stock')
+    .select('total_seller_stock, full_stock, last_synced_at')
+    .eq('meli_account_id', accountId)
+    .eq('user_product_id', userProductId)
+    .maybeSingle();
+
+  const operational = stock?.total_seller_stock ?? stock?.full_stock ?? null;
+  return {
+    published: item?.available_quantity ?? null,
+    operational,
+    staleMinutes: stock?.last_synced_at ? Math.max(0, (Date.now() - Date.parse(stock.last_synced_at)) / 60_000) : null,
+  };
+}
+
+async function capacitySignals(accountId: string): Promise<{ pending: number; hourlyCapacity: number | null }> {
+  const { count: pending, error: pendingError } = await adminClient()
+    .from('orders')
+    .select('order_id', { count: 'exact', head: true })
+    .eq('meli_account_id', accountId)
+    .in('status', ['confirmed', 'paid']);
+  if (pendingError) throw new Error(`risk_pending_orders_failed:${pendingError.code ?? 'unknown'}`);
+
+  const since = new Date(Date.now() - CAPACITY_DAYS * 86_400_000).toISOString();
+  const { count: shipped, error: shippedError } = await adminClient()
+    .from('shipments')
+    .select('shipment_id', { count: 'exact', head: true })
+    .eq('meli_account_id', accountId)
+    .gte('shipped_at', since);
+  if (shippedError) throw new Error(`risk_capacity_failed:${shippedError.code ?? 'unknown'}`);
+
+  const hourlyCapacity = (shipped ?? 0) > 0 ? (shipped ?? 0) / (CAPACITY_DAYS * 24) : null;
+  return { pending: pending ?? 0, hourlyCapacity };
+}
+
 async function buildFeatures(job: Job): Promise<Record<string, number> | null> {
   if (!job.order_id) return null;
 
@@ -74,41 +237,41 @@ async function buildFeatures(job: Job): Promise<Record<string, number> | null> {
     .eq('order_id', job.order_id)
     .maybeSingle();
   if (!order) return null;
+  const orderContext = order as OrderContext;
 
-  const { data: shipment } = order.shipment_id
+  const { data: shipment } = orderContext.shipment_id
     ? await adminClient()
         .from('shipments')
         .select('substatus, logistic_type, expected_dispatch_at, sla_status, delivered_at')
         .eq('meli_account_id', job.meli_account_id)
-        .eq('shipment_id', order.shipment_id)
+        .eq('shipment_id', orderContext.shipment_id)
         .maybeSingle()
     : { data: null };
 
-  const { count: packOrders } = order.pack_id
+  const { count: packOrders } = orderContext.pack_id
     ? await adminClient()
         .from('orders')
         .select('order_id', { count: 'exact', head: true })
         .eq('meli_account_id', job.meli_account_id)
-        .eq('pack_id', order.pack_id)
+        .eq('pack_id', orderContext.pack_id)
     : { count: 1 };
 
   const slaMinutes = shipment?.expected_dispatch_at
     ? (Date.parse(shipment.expected_dispatch_at) - Date.now()) / 60_000
     : null;
 
-  const { data: packMessages } = order.pack_id
+  const { data: packMessages } = orderContext.pack_id
     ? await adminClient()
         .from('messages')
         .select('message_id, date_created, actor_role')
         .eq('meli_account_id', job.meli_account_id)
-        .eq('pack_id', order.pack_id)
+        .eq('pack_id', orderContext.pack_id)
         .eq('actor_role', 'buyer')
         .order('date_created', { ascending: false })
         .limit(5)
     : { data: [] };
 
   const messageIds = (packMessages ?? []).map((row) => row.message_id);
-
   const { data: classifications } = messageIds.length
     ? await adminClient()
         .from('ai_classifications')
@@ -125,12 +288,12 @@ async function buildFeatures(job: Job): Promise<Record<string, number> | null> {
     | undefined;
 
   const newestBuyerAt = (packMessages ?? [])[0]?.date_created ?? null;
-  const { data: newestSeller } = order.pack_id
+  const { data: newestSeller } = orderContext.pack_id
     ? await adminClient()
         .from('messages')
         .select('date_created')
         .eq('meli_account_id', job.meli_account_id)
-        .eq('pack_id', order.pack_id)
+        .eq('pack_id', orderContext.pack_id)
         .eq('actor_role', 'seller')
         .order('date_created', { ascending: false })
         .limit(1)
@@ -158,6 +321,29 @@ async function buildFeatures(job: Job): Promise<Record<string, number> | null> {
     Number.POSITIVE_INFINITY,
   );
 
+  const { data: currentItems } = await adminClient()
+    .from('order_items')
+    .select('item_id, user_product_id, seller_sku_hash')
+    .eq('meli_account_id', job.meli_account_id)
+    .eq('order_id', job.order_id)
+    .limit(1);
+  const currentItem = ((currentItems ?? [])[0] as CurrentItem | undefined) ?? null;
+
+  const historyOrderIds = await recentOrderIds(job.meli_account_id, job.order_id);
+  const [rates, stock, capacity] = await Promise.all([
+    itemAndSkuRates(job.meli_account_id, currentItem, historyOrderIds),
+    stockSignals(job.meli_account_id, currentItem),
+    capacitySignals(job.meli_account_id),
+  ]);
+
+  const baseline = rates.categoryRate ?? (await claimRateForOrders(job.meli_account_id, historyOrderIds)) ?? 0;
+  const stockGap =
+    stock.published === null || stock.operational === null
+      ? stock.staleMinutes === null
+        ? 0.2
+        : ramp(stock.staleMinutes, 60, 1440) * 0.6
+      : ramp(stock.published - stock.operational, 0, Math.max(1, stock.published));
+
   const slaPressure =
     slaMinutes === null
       ? shipment?.sla_status === 'delayed'
@@ -167,11 +353,13 @@ async function buildFeatures(job: Job): Promise<Record<string, number> | null> {
 
   return {
     sla_pressure: clamp01(slaPressure) * (shipment?.logistic_type === 'fulfillment' ? 0.5 : 1),
-    shipment_exception:
-      shipment?.substatus && EXCEPTION_SUBSTATUS.has(shipment.substatus.toLowerCase()) ? 0.7 : 0,
-    stock_gap: 0.2,
-    sku_claim_rate_z: rateZ(0, 0.02, 0.03),
-    item_claim_rate_z: rateZ(0, 0.02, 0.03),
+    shipment_exception: clamp01(
+      (shipment?.substatus && EXCEPTION_SUBSTATUS.has(shipment.substatus.toLowerCase()) ? 0.7 : 0) +
+        (shipment?.sla_status === 'delayed' ? 0.3 : 0),
+    ),
+    stock_gap: clamp01(stockGap),
+    sku_claim_rate_z: rateZ(rates.skuRate ?? 0, baseline, 0.03),
+    item_claim_rate_z: rateZ(rates.itemRate ?? 0, baseline, 0.03),
     message_package_intent:
       latest?.intent === 'where_is_package' || latest?.intent === 'delivery_problem' ? 1 : 0,
     message_product_issue: ['product_defective', 'product_different', 'missing_parts', 'wrong_variant'].includes(
@@ -182,7 +370,12 @@ async function buildFeatures(job: Job): Promise<Record<string, number> | null> {
     urgency: clamp01(latest?.urgency ?? 0),
     negative_sentiment: clamp01(((latest?.sentiment ?? 0) * -1 + 1) / 2),
     response_latency: unansweredMinutes === null ? 0 : ramp(unansweredMinutes, 30, 720),
-    capacity_pressure: 0,
+    capacity_pressure:
+      capacity.hourlyCapacity && capacity.hourlyCapacity > 0
+        ? ramp(capacity.pending / capacity.hourlyCapacity, 1, 6)
+        : capacity.pending > 0
+          ? 0.5
+          : 0,
     account_headroom: Number.isFinite(minHeadroom) ? clamp01(1 - Math.min(minHeadroom, 10) / 10) : 0,
     pack_order_count: clamp01(((packOrders ?? 1) - 1) / 5),
   };
@@ -216,6 +409,7 @@ async function scoreJob(job: Job): Promise<void> {
           : 'critical';
 
   contributions.sort((a, b) => Math.abs(Number(b.contribution)) - Math.abs(Number(a.contribution)));
+  const featureHash = await sha256Hex(JSON.stringify(features));
 
   await rpc('backend_store_risk_score', {
     p_org_id: job.org_id,
@@ -230,7 +424,7 @@ async function scoreJob(job: Job): Promise<void> {
     p_band: band,
     p_explanations: contributions.slice(0, 5),
     p_features: contributions,
-    p_feature_hash: JSON.stringify(features).length.toString(36),
+    p_feature_hash: featureHash,
   });
 }
 
