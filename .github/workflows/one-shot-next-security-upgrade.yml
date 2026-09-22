@@ -26,8 +26,11 @@ jobs:
       - name: Install current lockfile
         run: npm ci
 
-      - name: Upgrade patched Next.js maintenance release
-        run: npm install --save-exact next@15.5.25 eslint-config-next@15.5.25
+      - name: Upgrade patched Next.js maintenance release and transitive security fixes
+        run: |
+          npm install --save-exact next@15.5.25 eslint-config-next@15.5.25
+          npm pkg set overrides.postcss=8.5.28 overrides.sharp=0.35.4
+          npm install
 
       - name: Security audit (high and critical)
         run: npm audit --audit-level=high
