@@ -1,5 +1,6 @@
 import { adminClient, rpc } from '../_shared/db.ts';
-import { loadEnv } from '../_shared/env.ts';
+import { loadMeliOAuthEnv } from '../_shared/env.ts';
+import { requireInternalInvocation } from '../_shared/internal-auth.ts';
 import { MeliClient } from '../_shared/meli-client.ts';
 import { log } from '../_shared/logging.ts';
 import { sha256Hex } from '../_shared/pii.ts';
@@ -20,8 +21,11 @@ interface MissedFeed {
   actions?: string[];
 }
 
-Deno.serve(async () => {
-  const env = loadEnv();
+Deno.serve(async (request) => {
+  const authError = await requireInternalInvocation(request);
+  if (authError) return authError;
+
+  const env = loadMeliOAuthEnv();
   const { data: accounts } = await adminClient()
     .from('meli_accounts')
     .select('id, org_id, seller_id, site_id, status')
@@ -35,7 +39,6 @@ Deno.serve(async () => {
     try {
       const feeds = await client.get<MissedFeed[] | { missed_feeds?: MissedFeed[] }>('/missed_feeds', {
         endpointClass: 'missed_feeds',
-        // The items topic may require site_id; the capability flag decides.
         query: { app_id: env.meliAppId },
       });
 
