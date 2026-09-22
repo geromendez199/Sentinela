@@ -1,7 +1,7 @@
 import 'server-only';
 import { cache } from 'react';
 import { createClient } from '@/lib/supabase/server';
-import type { OrgRole } from '@/lib/supabase/database.types';
+import type { OrgRole } from '@/lib/supabase/schema-types';
 
 export interface OrgContext {
   userId: string;

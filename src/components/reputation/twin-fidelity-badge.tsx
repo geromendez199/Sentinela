@@ -1,4 +1,4 @@
-import type { FidelityStatus } from '@/lib/supabase/database.types';
+import type { FidelityStatus } from '@/lib/supabase/schema-types';
 import { classNames } from '@/lib/utils/format';
 
 const LABELS: Record<FidelityStatus, { text: string; className: string; help: string }> = {

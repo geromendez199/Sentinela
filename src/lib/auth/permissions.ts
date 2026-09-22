@@ -1,4 +1,4 @@
-import type { OrgRole } from '@/lib/supabase/database.types';
+import type { OrgRole } from '@/lib/supabase/schema-types';
 
 /**
  * Permission matrix, section 5.1. `owner` is a strict superset of `admin`, which
