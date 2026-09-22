@@ -1,5 +1,5 @@
 -- Sentinela ML - hardening discovered during real Supabase PG17 validation.
--- Keep historical migrations immutable; this migration fixes effective cloud grants/RLS.
+-- This migration is reset-safe: it discovers current webhook partitions dynamically.
 
 -- Views in public are granted to API roles by Supabase default privileges. On PG15+
 -- they must be security_invoker so underlying table RLS is evaluated as the caller.
@@ -20,18 +20,23 @@ alter table public.webhook_dedupe enable row level security;
 revoke all on table public.webhook_dedupe from public, anon, authenticated;
 
 -- Physical partitions can be addressed directly by PostgREST if grants/default grants
--- allow it. Enable RLS and remove browser grants on every current partition.
-alter table public.webhook_events_default enable row level security;
-revoke all on table public.webhook_events_default from public, anon, authenticated;
-
-alter table public.webhook_events_2026_09 enable row level security;
-revoke all on table public.webhook_events_2026_09 from public, anon, authenticated;
-
-alter table public.webhook_events_2026_10 enable row level security;
-revoke all on table public.webhook_events_2026_10 from public, anon, authenticated;
-
-alter table public.webhook_events_2026_11 enable row level security;
-revoke all on table public.webhook_events_2026_11 from public, anon, authenticated;
+-- allow it. Discover every partition attached to webhook_events instead of hardcoding
+-- calendar months so this migration remains valid on future db reset runs.
+do $$
+declare
+  r record;
+begin
+  for r in
+    select n.nspname as schema_name, c.relname as table_name
+    from pg_inherits i
+    join pg_class c on c.oid = i.inhrelid
+    join pg_namespace n on n.oid = c.relnamespace
+    where i.inhparent = 'public.webhook_events'::regclass
+  loop
+    execute format('alter table %I.%I enable row level security', r.schema_name, r.table_name);
+    execute format('revoke all on table %I.%I from public, anon, authenticated', r.schema_name, r.table_name);
+  end loop;
+end $$;
 
 -- Future partitions must inherit the same hardening immediately after creation.
 create or replace function public.backend_create_webhook_partition(p_month date)
