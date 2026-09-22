@@ -45,6 +45,26 @@ interface Draft {
   idempotency_key: string;
 }
 
+interface ActionGuideTemplate {
+  id: string;
+  vars?: Array<{ id: string; type?: string }> | null;
+}
+
+interface ActionGuideOption {
+  id: string;
+  enabled?: boolean;
+  actionable?: boolean;
+  type?: string;
+  char_limit?: number | null;
+  cap_available?: number;
+  templates?: ActionGuideTemplate[] | null;
+}
+
+interface CapEntry {
+  option_id: string;
+  cap_available: number;
+}
+
 async function block(draft: Draft, reason: string): Promise<void> {
   await adminClient()
     .from('action_drafts')
@@ -63,69 +83,93 @@ async function block(draft: Draft, reason: string): Promise<void> {
   log('warn', 'action_blocked_policy', { action_id: draft.id, reason });
 }
 
+function requestedMessagingOption(draft: Draft): string {
+  const option = draft.payload_sanitized.option_id;
+  if (typeof option === 'string' && option.trim()) return option.trim();
+
+  // Backward-compatible drafts with only approved free text map to OTHER. This
+  // is still revalidated against the current action guide before the write.
+  if ((draft.rendered_text ?? '').trim()) return 'OTHER';
+  throw new PolicyError('messaging_option_missing');
+}
+
+function approvedVars(draft: Draft): Array<{ id: string; value: string | number }> | undefined {
+  const value = draft.payload_sanitized.vars;
+  if (!Array.isArray(value)) return undefined;
+
+  const result: Array<{ id: string; value: string | number }> = [];
+  for (const entry of value) {
+    if (!entry || typeof entry !== 'object') throw new PolicyError('messaging_vars_invalid');
+    const record = entry as Record<string, unknown>;
+    if (typeof record.id !== 'string') throw new PolicyError('messaging_vars_invalid');
+    if (typeof record.value !== 'string' && typeof record.value !== 'number') {
+      throw new PolicyError('messaging_vars_invalid');
+    }
+    result.push({ id: record.id, value: record.value });
+  }
+  return result;
+}
+
 async function executeSendMessage(draft: Draft, client: MeliClient): Promise<Record<string, unknown>> {
-  const { data: account } = await adminClient()
-    .from('meli_accounts')
-    .select('seller_id')
-    .eq('id', draft.meli_account_id)
-    .maybeSingle();
-  if (!account) throw new Error('account_missing');
   if (!draft.pack_id) throw new Error('pack_missing');
 
-  const guide = await client.get<{
-    blocked?: boolean;
-    options?: Array<{ id?: string; text?: string; template_id?: string }>;
-    free_text_enabled?: boolean;
-  }>(`/messages/action_guide/packs/${draft.pack_id}`, {
-    endpointClass: 'messages.action_guide',
-    resourceClass: 'messaging',
-    query: { tag: 'post_sale' },
-  });
+  const guide = await client.get<{ options?: ActionGuideOption[] }>(
+    `/messages/action_guide/packs/${draft.pack_id}`,
+    {
+      endpointClass: 'messages.action_guide',
+      resourceClass: 'messaging',
+      query: { tag: 'post_sale' },
+    },
+  );
 
-  if (guide.blocked === true) throw new PolicyError('action_guide_blocked');
+  const optionId = requestedMessagingOption(draft);
+  const option = (guide.options ?? []).find((candidate) => candidate.id === optionId);
+  if (!option) throw new PolicyError(`messaging_option_unavailable:${optionId}`);
+  if (option.enabled === false || option.actionable === false) {
+    throw new PolicyError(`messaging_option_not_actionable:${optionId}`);
+  }
 
-  const caps = await client
-    .get<{ caps_available?: number }>(`/messages/action_guide/packs/${draft.pack_id}/caps_available`, {
+  // Current official contract returns an array keyed by option_id.
+  const caps = await client.get<CapEntry[]>(
+    `/messages/action_guide/packs/${draft.pack_id}/caps_available`,
+    {
       endpointClass: 'messages.caps',
       resourceClass: 'messaging',
       query: { tag: 'post_sale' },
-    })
-    .catch(() => null);
-
-  if (caps && typeof caps.caps_available === 'number' && caps.caps_available <= 0) {
-    throw new PolicyError('caps_exhausted');
-  }
-
-  const text = (draft.rendered_text ?? '').trim();
-  if (text.length === 0) throw new PolicyError('empty_text');
-  if (text.length > POST_SALE_MAX_CHARS) throw new PolicyError('text_too_long');
-
-  const option = (guide.options ?? []).find(
-    (entry) => entry.text && entry.text.trim().toLowerCase() === text.toLowerCase(),
+    },
   );
+  const currentCap = caps.find((entry) => entry.option_id === optionId)?.cap_available ?? 0;
+  if (currentCap <= 0) throw new PolicyError(`caps_exhausted:${optionId}`);
 
-  if (option?.id) {
-    return client.request(`/messages/action_guide/packs/${draft.pack_id}/option`, {
-      method: 'POST',
-      endpointClass: 'messages.option',
-      resourceClass: 'messaging',
-      query: { tag: 'post_sale' },
-      idempotencyKey: draft.idempotency_key,
-      body: { option_id: option.id, template_id: option.template_id ?? undefined },
-    });
+  const body: Record<string, unknown> = { option_id: optionId };
+
+  if ((option.type ?? '').toLowerCase() === 'free_text') {
+    const text = (draft.rendered_text ?? '').trim();
+    if (!text) throw new PolicyError('empty_text');
+    const charLimit = Math.min(option.char_limit ?? POST_SALE_MAX_CHARS, POST_SALE_MAX_CHARS);
+    if (text.length > charLimit) throw new PolicyError(`text_too_long:${charLimit}`);
+    body.text = text;
+  } else {
+    const templateId = draft.payload_sanitized.template_id;
+    if (typeof templateId !== 'string' || !templateId) {
+      throw new PolicyError(`template_required:${optionId}`);
+    }
+    if (!(option.templates ?? []).some((template) => template.id === templateId)) {
+      throw new PolicyError(`template_unavailable:${templateId}`);
+    }
+    body.template_id = templateId;
+
+    const vars = approvedVars(draft);
+    if (vars?.length) body.vars = vars;
   }
 
-  if ((guide.options ?? []).length > 0 && guide.free_text_enabled !== true) {
-    throw new PolicyError('option_required');
-  }
-
-  return client.request(`/messages/packs/${draft.pack_id}/sellers/${account.seller_id}`, {
+  return client.request(`/messages/action_guide/packs/${draft.pack_id}/option`, {
     method: 'POST',
-    endpointClass: 'messages.send',
+    endpointClass: 'messages.option',
     resourceClass: 'messaging',
     query: { tag: 'post_sale' },
     idempotencyKey: draft.idempotency_key,
-    body: { from: { user_id: account.seller_id }, text },
+    body,
   });
 }
 
