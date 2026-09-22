@@ -1,4 +1,5 @@
 import { adminClient } from '../_shared/db.ts';
+import { requireInternalInvocation } from '../_shared/internal-auth.ts';
 import { log } from '../_shared/logging.ts';
 
 /**
@@ -80,7 +81,6 @@ async function clusterAccount(account: { id: string; org_id: string }): Promise<
   for (const [itemId, rows] of byItem) {
     if (rows.length < MIN_CLUSTER_SIZE) continue;
 
-    // Deterministic order so the same evidence always yields the same clusters.
     const ordered = [...rows].sort(
       (a, b) => Date.parse(a.created_at) - Date.parse(b.created_at) || a.id.localeCompare(b.id),
     );
@@ -125,8 +125,6 @@ async function clusterAccount(account: { id: string; org_id: string }): Promise<
         org_id: account.org_id,
         meli_account_id: account.id,
         item_id: itemId,
-        // Labelling with the LLM happens in a follow-up pass over sanitized
-        // representative examples; the cluster is usable without it.
         label: `patron-${cluster.members.length}-casos`,
         sample_count: cluster.members.length,
         first_seen_at: firstSeen,
@@ -142,7 +140,10 @@ async function clusterAccount(account: { id: string; org_id: string }): Promise<
   return created;
 }
 
-Deno.serve(async () => {
+Deno.serve(async (request) => {
+  const authError = await requireInternalInvocation(request);
+  if (authError) return authError;
+
   const { data: accounts } = await adminClient()
     .from('meli_accounts')
     .select('id, org_id')
