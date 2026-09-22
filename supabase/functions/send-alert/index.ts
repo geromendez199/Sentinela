@@ -1,5 +1,6 @@
 import { adminClient } from '../_shared/db.ts';
-import { loadEnv } from '../_shared/env.ts';
+import { loadNotificationsEnv } from '../_shared/env.ts';
+import { requireInternalInvocation } from '../_shared/internal-auth.ts';
 import { log } from '../_shared/logging.ts';
 import { deleteMessage, readBatch, requeue } from '../_shared/queue.ts';
 
@@ -26,13 +27,12 @@ async function deliver(alert: {
   body: string;
   channels: unknown;
 }): Promise<void> {
-  const env = loadEnv();
+  const env = loadNotificationsEnv();
   if (env.notificationsProvider === 'none' || !env.notificationsApiKey) {
     log('info', 'alert_delivery_skipped', { alert_id: alert.id, reason: 'provider_disabled' });
     return;
   }
 
-  // Minimal operational payload only.
   const payload = {
     severity: alert.severity,
     kind: alert.kind,
@@ -53,6 +53,9 @@ async function deliver(alert: {
 }
 
 Deno.serve(async (request) => {
+  const authError = await requireInternalInvocation(request);
+  if (authError) return authError;
+
   const body = (await request.json().catch(() => ({}))) as { batch_size?: number };
   const messages = await readBatch<AlertJob>(QUEUE, 60, Math.min(50, body.batch_size ?? 20));
 
@@ -72,7 +75,6 @@ Deno.serve(async (request) => {
         continue;
       }
 
-      // Dedupe: an identical kind delivered recently is not repeated.
       const since = new Date(Date.now() - THROTTLE_MINUTES * 60_000).toISOString();
       const { count } = await adminClient()
         .from('internal_metrics')
