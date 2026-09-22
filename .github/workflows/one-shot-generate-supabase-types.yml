@@ -20,7 +20,7 @@ jobs:
 
       - uses: supabase/setup-cli@v1
         with:
-          version: latest
+          version: 2.117.0
 
       - name: Start local Supabase
         run: supabase start
@@ -34,10 +34,27 @@ jobs:
       - name: Guard generated type shape
         run: |
           grep -q '^export type Database' src/lib/supabase/database.types.ts
+          grep -q 'org_role:' src/lib/supabase/database.types.ts
+          grep -q 'fidelity_status:' src/lib/supabase/database.types.ts
           if grep -Eq '^export interface (Database|.*Row)' src/lib/supabase/database.types.ts; then
             echo 'Generated Database/Row types must remain type aliases, not interfaces.' >&2
             exit 1
           fi
+
+      - name: Derive stable application aliases from generated enums
+        run: |
+          cat > src/lib/supabase/schema-types.ts <<'EOF'
+          import type { Database } from './database.types';
+
+          /** Stable app aliases derived from the generated Supabase schema. */
+          export type OrgRole = Database['public']['Enums']['org_role'];
+          export type FidelityStatus = Database['public']['Enums']['fidelity_status'];
+          EOF
+
+          sed -i "s|@/lib/supabase/database.types|@/lib/supabase/schema-types|" \
+            src/components/reputation/twin-fidelity-badge.tsx \
+            src/lib/auth/org-context.ts \
+            src/lib/auth/permissions.ts
 
       - uses: actions/setup-node@v4
         with:
@@ -71,7 +88,12 @@ jobs:
           git config user.name "sentinela-ci"
           git config user.email "actions@users.noreply.github.com"
           git rm .github/workflows/one-shot-generate-supabase-types.yml
-          git add src/lib/supabase/database.types.ts
+          git add \
+            src/lib/supabase/database.types.ts \
+            src/lib/supabase/schema-types.ts \
+            src/components/reputation/twin-fidelity-badge.tsx \
+            src/lib/auth/org-context.ts \
+            src/lib/auth/permissions.ts
           git commit -m "Regenerate Supabase types from local PG17 schema"
           git push origin HEAD:claude/sentinela-completo-09415s
 
