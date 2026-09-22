@@ -10,6 +10,11 @@ import { log } from '../_shared/logging.ts';
  * GET /users/{id}.seller_reputation, and the calculated twin. Divergence is
  * recorded as drift and degrades fidelity; the official figure is never
  * overwritten by the calculation.
+ *
+ * Critical invariant: every calculated metric uses the period returned by the
+ * corresponding official metrics.*.period field. Missing/unparseable periods
+ * degrade fidelity; we never infer the official window from local sales counts
+ * or a configured rule-set fallback.
  */
 
 const METRICS = ['claims', 'cancellations', 'delayed_handling_time'] as const;
@@ -20,17 +25,19 @@ interface RuleSet {
   site_id: string;
   thresholds: Record<Metric, { target: number; green: number; yellow: number; orange: number }>;
   comparators: Partial<Record<Metric, 'lt' | 'lte'>>;
-  high_volume_window_days: number | null;
-  low_volume_window_days: number;
-  high_volume_min_sales: number | null;
+}
+
+interface OfficialMetric {
+  period?: string;
+  rate?: number;
+  value?: number;
 }
 
 function parsePeriodDays(period: string | null | undefined): number | null {
   if (!period) return null;
-  const days = /(\d+)\s*d/i.exec(period);
+  const normalized = period.trim().toLowerCase();
+  const days = /^(\d+)\s*(?:d|day|days|dia|dias|día|días)$/.exec(normalized);
   if (days?.[1]) return Number(days[1]);
-  const months = /(\d+)\s*m/i.exec(period);
-  if (months?.[1]) return Number(months[1]) * 30;
   return null;
 }
 
@@ -67,9 +74,33 @@ function headroomFuture(n: number, v: number, threshold: number, comparator: 'lt
 function healthyToRecover(n: number, v: number, threshold: number, comparator: 'lt' | 'lte'): number {
   if (threshold <= 0) return v > 0 ? 1_000_000 : 0;
   for (let k = 0; k <= 1_000_000; k++) {
-    if (satisfies(v / (n + k), threshold, comparator)) return k;
+    if (satisfies(v / Math.max(1, n + k), threshold, comparator)) return k;
   }
   return 1_000_000;
+}
+
+async function eligibleDenominator(
+  accountId: string,
+  metric: Metric,
+  windowStart: string,
+): Promise<number> {
+  let query = adminClient()
+    .from('orders')
+    .select('order_id', { count: 'exact', head: true })
+    .eq('meli_account_id', accountId)
+    .gte('date_created', windowStart);
+
+  if (metric === 'delayed_handling_time') {
+    // The official denominator is shipped ME2 sales. The local mirror cannot
+    // perfectly reproduce every upstream exclusion, but requiring a shipment
+    // avoids treating non-shipping orders as eligible. Drift makes remaining
+    // differences explicit rather than hiding them.
+    query = query.not('shipment_id', 'is', null).neq('status', 'cancelled');
+  }
+
+  const { count, error } = await query;
+  if (error) throw new Error(`reputation_denominator_failed:${metric}:${error.code ?? 'unknown'}`);
+  return count ?? 0;
 }
 
 async function reconcileAccount(account: { id: string; org_id: string; site_id: string }): Promise<void> {
@@ -105,60 +136,63 @@ async function reconcileAccount(account: { id: string; org_id: string; site_id: 
   const ruleSet = (ruleSets?.[0] ?? null) as RuleSet | null;
   if (!ruleSet) return;
 
-  const metrics = (reputation.metrics ?? {}) as Record<string, { period?: string; rate?: number; value?: number }>;
+  const metrics = (reputation.metrics ?? {}) as Record<string, OfficialMetric>;
+  const now = new Date();
+  const windowEnd = now.toISOString();
 
-  const windowDays = parsePeriodDays(metrics.claims?.period) ?? ruleSet.low_volume_window_days;
-  const windowStart = new Date(Date.now() - windowDays * 86_400_000).toISOString();
-  const windowEnd = new Date().toISOString();
-
-  const { count: denominator } = await adminClient()
-    .from('orders')
-    .select('order_id', { count: 'exact', head: true })
-    .eq('meli_account_id', account.id)
-    .gte('date_created', windowStart)
-    .not('status', 'eq', 'cancelled');
-
-  const eligible = denominator ?? 0;
-
-  const localMetrics: Record<string, { value: number; denominator: number; rate: number }> = {};
+  const localMetrics: Record<string, { value: number; denominator: number; rate: number; period: string }> = {};
   const headroom: Array<Record<string, unknown>> = [];
   const drift: Array<Record<string, unknown>> = [];
+  const unavailablePeriods: Array<{ metric: Metric; period: string | null }> = [];
+  const starts: number[] = [];
 
   for (const metric of METRICS) {
-    const incidentType = metric === 'delayed_handling_time' ? 'delay' : metric === 'claims' ? 'claim' : 'cancellation';
+    const official = metrics[metric];
+    const periodDays = parsePeriodDays(official?.period);
+    if (!periodDays || periodDays <= 0) {
+      unavailablePeriods.push({ metric, period: official?.period ?? null });
+      continue;
+    }
 
-    const { count } = await adminClient()
+    const windowStart = new Date(now.getTime() - periodDays * 86_400_000).toISOString();
+    starts.push(Date.parse(windowStart));
+    const denominator = await eligibleDenominator(account.id, metric, windowStart);
+
+    const incidentType = metric === 'delayed_handling_time' ? 'delay' : metric === 'claims' ? 'claim' : 'cancellation';
+    const { count, error } = await adminClient()
       .from('reputation_incidents')
       .select('id', { count: 'exact', head: true })
       .eq('meli_account_id', account.id)
       .eq('incident_type', incidentType)
       .eq('affects_reputation', true)
       .gte('occurred_at', windowStart);
+    if (error) throw new Error(`reputation_incidents_failed:${metric}:${error.code ?? 'unknown'}`);
 
     const value = count ?? 0;
-    const rate = eligible > 0 ? value / eligible : 0;
-    localMetrics[metric] = { value, denominator: eligible, rate };
+    const rate = denominator > 0 ? value / denominator : 0;
+    localMetrics[metric] = { value, denominator, rate, period: official.period! };
 
     const comparator = ruleSet.comparators[metric] ?? 'lte';
     const threshold = nextThreshold(rate, ruleSet.thresholds[metric], comparator);
-
     headroom.push({
       metric,
+      officialPeriod: official.period,
       rate,
       threshold,
       comparator,
-      headroomExisting: headroomExisting(eligible, value, threshold, comparator),
-      headroomFutureBadSales: headroomFuture(eligible, value, threshold, comparator),
-      healthySalesToRecover: healthyToRecover(eligible, value, threshold, comparator),
+      headroomExisting: headroomExisting(denominator, value, threshold, comparator),
+      headroomFutureBadSales: headroomFuture(denominator, value, threshold, comparator),
+      healthySalesToRecover: healthyToRecover(denominator, value, threshold, comparator),
     });
 
-    const official = metrics[metric];
-    if (official?.value !== undefined || official?.rate !== undefined) {
+    if (official.value !== undefined || official.rate !== undefined) {
       const valueDelta = value - (official.value ?? 0);
       const rateDelta = rate - (official.rate ?? 0);
-      const tolerance = Math.max(0.001, 1 / Math.max(eligible, 1));
+      const tolerance = Math.max(0.001, 1 / Math.max(denominator, 1));
       drift.push({
         metric,
+        officialPeriod: official.period,
+        localDenominator: denominator,
         valueDelta,
         rateDelta,
         exceedsTolerance: Math.abs(valueDelta) > 1 || Math.abs(rateDelta) > tolerance,
@@ -179,25 +213,33 @@ async function reconcileAccount(account: { id: string; org_id: string; site_id: 
   }).length;
 
   const exceedsNow = drift.some((entry) => entry.exceedsTolerance === true);
-  const fidelity = drift.length === 0 ? 'initializing' : exceedsNow && previousExceeded >= 2 ? 'degraded' : 'calibrated';
+  const fidelity =
+    unavailablePeriods.length > 0 || drift.length === 0
+      ? 'unknown'
+      : exceedsNow && previousExceeded >= 2
+        ? 'degraded'
+        : 'calibrated';
+
+  const overallWindowStart = starts.length > 0 ? new Date(Math.min(...starts)).toISOString() : null;
 
   await rpc('backend_store_reputation_computation', {
     p_org_id: account.org_id,
     p_account_id: account.id,
     p_rule_set_id: ruleSet.id,
-    p_window_start: windowStart,
+    p_window_start: overallWindowStart,
     p_window_end: windowEnd,
     p_metrics: localMetrics,
-    p_headroom: { metrics: headroom },
+    p_headroom: { metrics: headroom, unavailablePeriods },
     p_projections: {},
-    p_drift: { entries: drift },
+    p_drift: { entries: drift, unavailablePeriods },
     p_fidelity: fidelity,
   });
 
   log('info', 'reputation_reconciled', {
     meli_account_id: account.id,
     fidelity,
-    window_days: windowDays,
+    official_periods: Object.fromEntries(METRICS.map((metric) => [metric, metrics[metric]?.period ?? null])),
+    unavailable_periods: unavailablePeriods.map((entry) => entry.metric),
   });
 }
 
