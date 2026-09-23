@@ -2,6 +2,7 @@ import { adminClient, rpc } from '../_shared/db.ts';
 import { requireInternalInvocation } from '../_shared/internal-auth.ts';
 import { MeliClient } from '../_shared/meli-client.ts';
 import { log } from '../_shared/logging.ts';
+import { parseOfficialPeriodDays } from '../_shared/reputation-period.ts';
 
 /**
  * Reputation reconciliation (sections 4.3 and 6.4).
@@ -31,14 +32,6 @@ interface OfficialMetric {
   period?: string;
   rate?: number;
   value?: number;
-}
-
-function parsePeriodDays(period: string | null | undefined): number | null {
-  if (!period) return null;
-  const normalized = period.trim().toLowerCase();
-  const days = /^(\d+)\s*(?:d|day|days|dia|dias|día|días)$/.exec(normalized);
-  if (days?.[1]) return Number(days[1]);
-  return null;
 }
 
 function satisfies(rate: number, threshold: number, comparator: 'lt' | 'lte'): boolean {
@@ -148,7 +141,7 @@ async function reconcileAccount(account: { id: string; org_id: string; site_id: 
 
   for (const metric of METRICS) {
     const official = metrics[metric];
-    const periodDays = parsePeriodDays(official?.period);
+    const periodDays = parseOfficialPeriodDays(official?.period);
     if (!periodDays || periodDays <= 0) {
       unavailablePeriods.push({ metric, period: official?.period ?? null });
       continue;
