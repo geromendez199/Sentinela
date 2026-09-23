@@ -1,3 +1,4 @@
+import { isMeliWriteAction, preExecutionCapabilityBlock } from '../_shared/action-execution-policy.ts';
 import { adminClient } from '../_shared/db.ts';
 import { loadWritePolicyEnv } from '../_shared/env.ts';
 import { RetryableError } from '../_shared/errors.ts';
@@ -297,9 +298,12 @@ async function execute(job: Job): Promise<void> {
   if (!draft) return;
   if (draft.status !== 'executing' && draft.status !== 'approved') return;
 
-  const isWrite = ['SEND_POST_SALE_MESSAGE', 'PAUSE_ITEM', 'UPDATE_STOCK', 'EXECUTE_CLAIM_ACTION'].includes(
-    draft.kind,
-  );
+  // Missing external write handlers are rejected before claiming an idempotency
+  // execution row. B6 may enable them only after the handler and contract flag exist.
+  const capabilityBlock = preExecutionCapabilityBlock(draft.kind);
+  if (capabilityBlock) return block(draft, capabilityBlock);
+
+  const isWrite = isMeliWriteAction(draft.kind);
 
   if (isWrite) {
     if (!writesEnabled) return block(draft, 'writes_disabled_globally');
