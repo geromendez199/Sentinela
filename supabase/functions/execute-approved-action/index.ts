@@ -19,6 +19,8 @@ import { deleteMessage, readBatch, requeue } from '../_shared/queue.ts';
 
 const QUEUE = 'derived_jobs';
 const POST_SALE_MAX_CHARS = 350;
+const EXECUTION_STALE_SECONDS = 90;
+const MAX_EXECUTION_READS = 3;
 
 interface Job {
   job: string;
@@ -43,6 +45,13 @@ interface Draft {
   claim_id: number | null;
   pack_id: number | null;
   idempotency_key: string;
+}
+
+interface ExecutionClaim {
+  execution_id: string;
+  attempt: number;
+  should_execute: boolean;
+  claim_state: string;
 }
 
 interface ActionGuideTemplate {
@@ -200,6 +209,80 @@ class PolicyError extends Error {
   }
 }
 
+async function claimExecution(draft: Draft, job: Job): Promise<ExecutionClaim> {
+  const { data, error } = await adminClient().rpc('backend_claim_action_execution', {
+    p_org_id: draft.org_id,
+    p_account_id: draft.meli_account_id,
+    p_action_id: draft.id,
+    p_idempotency_key: draft.idempotency_key,
+    p_correlation_id: job.correlation_id ?? null,
+    p_stale_after_seconds: EXECUTION_STALE_SECONDS,
+  });
+
+  if (error) throw new RetryableError(`action_execution_claim_failed:${error.code ?? 'unknown'}`);
+  const rows = data as ExecutionClaim[] | ExecutionClaim | null;
+  const claim = Array.isArray(rows) ? rows[0] : rows;
+  if (!claim) throw new RetryableError('action_execution_claim_empty');
+  return claim;
+}
+
+async function recordRetryableFailure(executionId: string, error: RetryableError): Promise<void> {
+  const { error: updateError } = await adminClient()
+    .from('action_executions')
+    .update({ error_class: error.message.slice(0, 100) })
+    .eq('id', executionId)
+    .eq('outcome', 'started')
+    .is('finished_at', null);
+
+  if (updateError) {
+    log('error', 'action_retry_state_persist_failed', {
+      execution_id: executionId,
+      error: updateError.code ?? 'unknown',
+    });
+  }
+}
+
+async function markRetryExhausted(job: Job, error: unknown): Promise<void> {
+  const reason = String(error).slice(0, 500);
+  const { data } = await adminClient()
+    .from('action_drafts')
+    .select('id, org_id, meli_account_id, approved_by, status')
+    .eq('id', job.action_draft_id)
+    .eq('org_id', job.org_id)
+    .maybeSingle();
+
+  if (!data || data.status === 'executed' || data.status === 'blocked_policy') return;
+
+  await adminClient()
+    .from('action_executions')
+    .update({ outcome: 'failed', error_class: reason.slice(0, 100), finished_at: new Date().toISOString() })
+    .eq('action_draft_id', job.action_draft_id)
+    .eq('outcome', 'started')
+    .is('finished_at', null);
+
+  await adminClient()
+    .from('action_drafts')
+    .update({
+      status: 'failed',
+      error_code: 'retry_exhausted',
+      error_message: reason,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', job.action_draft_id)
+    .in('status', ['approved', 'executing']);
+
+  await adminClient().from('security_audit_log').insert({
+    org_id: data.org_id,
+    meli_account_id: data.meli_account_id,
+    actor_user_id: data.approved_by,
+    action: 'action_execution_failed',
+    resource_type: 'action_draft',
+    resource_id: data.id,
+    correlation_id: job.correlation_id ?? null,
+    metadata: { reason: 'retry_exhausted' },
+  });
+}
+
 async function execute(job: Job): Promise<void> {
   const { writesEnabled } = loadWritePolicyEnv();
 
@@ -233,20 +316,17 @@ async function execute(job: Job): Promise<void> {
     }
   }
 
-  const { data: execution } = await adminClient()
-    .from('action_executions')
-    .insert({
-      org_id: draft.org_id,
-      meli_account_id: draft.meli_account_id,
-      action_draft_id: draft.id,
-      idempotency_key: draft.idempotency_key,
-      correlation_id: job.correlation_id ?? null,
-    })
-    .select('id')
-    .maybeSingle();
-
-  if (!execution) {
-    log('info', 'action_execution_deduped', { action_id: draft.id });
+  const execution = await claimExecution(draft, job);
+  if (!execution.should_execute) {
+    if (execution.claim_state === 'in_progress') {
+      throw new RetryableError('action_execution_in_progress', 30_000);
+    }
+    log('info', 'action_execution_deduped', {
+      action_id: draft.id,
+      execution_id: execution.execution_id,
+      state: execution.claim_state,
+      attempt: execution.attempt,
+    });
     return;
   }
 
@@ -279,7 +359,7 @@ async function execute(job: Job): Promise<void> {
     await adminClient()
       .from('action_executions')
       .update({ outcome: 'executed', finished_at: new Date().toISOString() })
-      .eq('id', execution.id);
+      .eq('id', execution.execution_id);
 
     await adminClient().from('security_audit_log').insert({
       org_id: draft.org_id,
@@ -289,18 +369,21 @@ async function execute(job: Job): Promise<void> {
       resource_type: 'action_draft',
       resource_id: draft.id,
       correlation_id: job.correlation_id ?? null,
-      metadata: { kind: draft.kind },
+      metadata: { kind: draft.kind, attempt: execution.attempt },
     });
   } catch (error) {
     if (error instanceof PolicyError) {
       await adminClient()
         .from('action_executions')
         .update({ outcome: 'blocked_policy', error_class: error.message, finished_at: new Date().toISOString() })
-        .eq('id', execution.id);
+        .eq('id', execution.execution_id);
       return block(draft, error.message);
     }
 
-    if (error instanceof RetryableError) throw error;
+    if (error instanceof RetryableError) {
+      await recordRetryableFailure(execution.execution_id, error);
+      throw error;
+    }
 
     await adminClient()
       .from('action_drafts')
@@ -310,7 +393,7 @@ async function execute(job: Job): Promise<void> {
     await adminClient()
       .from('action_executions')
       .update({ outcome: 'failed', error_class: String(error).slice(0, 100), finished_at: new Date().toISOString() })
-      .eq('id', execution.id);
+      .eq('id', execution.execution_id);
   }
 }
 
@@ -329,9 +412,22 @@ Deno.serve(async (request) => {
       await deleteMessage(QUEUE, entry.msg_id);
       executed += 1;
     } catch (error) {
-      log('warn', 'action_execution_retry', { error: String(error) });
-      if (entry.read_ct >= 3) await deleteMessage(QUEUE, entry.msg_id);
-      else await requeue(QUEUE, entry.msg_id, 60 * entry.read_ct);
+      log('warn', 'action_execution_retry', { error: String(error), read_ct: entry.read_ct });
+
+      if (error instanceof RetryableError && error.message === 'action_execution_in_progress') {
+        const delay = Math.ceil((error.retryAfterMs ?? 30_000) / 1000);
+        await requeue(QUEUE, entry.msg_id, Math.max(15, delay));
+        continue;
+      }
+
+      if (entry.read_ct >= MAX_EXECUTION_READS) {
+        await markRetryExhausted(entry.message, error);
+        await deleteMessage(QUEUE, entry.msg_id);
+      } else {
+        const retryAfterMs = error instanceof RetryableError ? error.retryAfterMs : null;
+        const delay = Math.ceil((retryAfterMs ?? 60_000 * entry.read_ct) / 1000);
+        await requeue(QUEUE, entry.msg_id, Math.min(900, Math.max(30, delay)));
+      }
     }
   }
 
