@@ -3,6 +3,11 @@ import { MeliClient } from '../_shared/meli-client.ts';
 import { RetryableError } from '../_shared/errors.ts';
 import { requireInternalInvocation } from '../_shared/internal-auth.ts';
 import { log } from '../_shared/logging.ts';
+import {
+  DAY_MS,
+  boundedWindowEnd,
+  splitEffectiveWindow,
+} from '../_shared/backfill-window.ts';
 
 /**
  * Resumable historical backfill (section 6.5).
@@ -16,8 +21,6 @@ import { log } from '../_shared/logging.ts';
 const CLAIMS_SAFETY_CEILING = 9_000;
 const ORDERS_SAFETY_CEILING = 9_000;
 const PAGE_SIZE = 50;
-const HOUR_MS = 60 * 60 * 1000;
-const DAY_MS = 24 * HOUR_MS;
 
 interface SyncJob {
   id: string;
@@ -36,14 +39,6 @@ function initialWindowMs(resourceKind: string | null): number {
   if (resourceKind === 'claims') return 3 * DAY_MS;
   if (resourceKind === 'orders') return 7 * DAY_MS;
   return 7 * DAY_MS;
-}
-
-function boundedWindowEnd(start: string, rangeEnd: string, windowMs: number): string {
-  return new Date(Math.min(Date.parse(start) + windowMs, Date.parse(rangeEnd))).toISOString();
-}
-
-function splitWindow(windowMs: number): number {
-  return Math.max(HOUR_MS, Math.floor(windowMs / 2));
 }
 
 async function claimJob(): Promise<SyncJob | null> {
@@ -112,8 +107,9 @@ async function backfillOrders(client: MeliClient, job: SyncJob): Promise<void> {
     );
 
     if (probe.paging.total >= ORDERS_SAFETY_CEILING) {
-      if (windowMs <= HOUR_MS) throw new Error('orders_backfill_window_overflow');
-      windowMs = splitWindow(windowMs);
+      const split = splitEffectiveWindow(windowStart, windowEnd);
+      if (split.nextWindowMs === null) throw new Error('orders_backfill_window_overflow');
+      windowMs = split.nextWindowMs;
       continue;
     }
 
@@ -205,16 +201,18 @@ async function backfillClaims(client: MeliClient, job: SyncJob): Promise<void> {
     );
 
     if (probe.paging.total >= CLAIMS_SAFETY_CEILING) {
-      if (windowMs <= HOUR_MS) {
+      const split = splitEffectiveWindow(windowStart, windowEnd);
+      if (split.nextWindowMs === null) {
         log('error', 'claims_backfill_window_overflow', {
           meli_account_id: job.meli_account_id,
           window_start: windowStart,
           window_end: windowEnd,
+          window_ms: split.effectiveMs,
           total: probe.paging.total,
         });
         throw new Error('claims_backfill_window_overflow');
       }
-      windowMs = splitWindow(windowMs);
+      windowMs = split.nextWindowMs;
       continue;
     }
 
