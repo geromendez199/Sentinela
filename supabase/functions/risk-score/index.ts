@@ -2,6 +2,7 @@ import { adminClient, rpc } from '../_shared/db.ts';
 import { requireInternalInvocation } from '../_shared/internal-auth.ts';
 import { log } from '../_shared/logging.ts';
 import { deleteMessage, readBatch, requeue } from '../_shared/queue.ts';
+import { riskHistoryWindow } from '../_shared/risk-history.ts';
 
 /**
  * Risk scoring worker (section 8.1).
@@ -10,7 +11,8 @@ import { deleteMessage, readBatch, requeue } from '../_shared/queue.ts';
  * contribution persisted. It is a risk score, not a calibrated probability.
  *
  * Leakage guard: a claim on the order currently being scored is never used as
- * a predictor for that same order. Historical rates explicitly exclude it.
+ * a predictor for that same order. Historical rates explicitly exclude it and
+ * use only orders created before the order being scored.
  */
 
 const QUEUE = 'derived_jobs';
@@ -89,13 +91,14 @@ async function activeModel(orgId: string): Promise<ModelVersion | null> {
   return (data?.[0] as ModelVersion | undefined) ?? null;
 }
 
-async function recentOrderIds(accountId: string, excludeOrderId: number): Promise<number[]> {
-  const since = new Date(Date.now() - HISTORY_DAYS * 86_400_000).toISOString();
+async function recentOrderIds(accountId: string, excludeOrderId: number, asOf: string): Promise<number[]> {
+  const window = riskHistoryWindow(asOf, HISTORY_DAYS);
   const { data, error } = await adminClient()
     .from('orders')
     .select('order_id')
     .eq('meli_account_id', accountId)
-    .gte('date_created', since)
+    .gte('date_created', window.since)
+    .lt('date_created', window.before)
     .neq('order_id', excludeOrderId)
     .order('date_created', { ascending: false })
     .limit(HISTORY_SAMPLE_LIMIT);
@@ -329,7 +332,11 @@ async function buildFeatures(job: Job): Promise<Record<string, number> | null> {
     .limit(1);
   const currentItem = ((currentItems ?? [])[0] as CurrentItem | undefined) ?? null;
 
-  const historyOrderIds = await recentOrderIds(job.meli_account_id, job.order_id);
+  const historyOrderIds = await recentOrderIds(
+    job.meli_account_id,
+    job.order_id,
+    orderContext.date_created,
+  );
   const [rates, stock, capacity] = await Promise.all([
     itemAndSkuRates(job.meli_account_id, currentItem, historyOrderIds),
     stockSignals(job.meli_account_id, currentItem),
