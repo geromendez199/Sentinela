@@ -12,6 +12,14 @@ export class MeliError extends Error {
   }
 }
 
+/** Safe schema diagnostics: field names and issue codes, never provider values. */
+export class MeliTokenResponseError extends Error {
+  constructor(readonly issues: ReadonlyArray<{ field: string; code: string }>) {
+    super('invalid_oauth_token_response');
+    this.name = 'MeliTokenResponseError';
+  }
+}
+
 /** 429 or a transient 5xx: safe to retry with backoff and full jitter. */
 export class RetryableError extends Error {
   constructor(
@@ -63,6 +71,9 @@ export function isInvalidGrant(error: unknown): boolean {
 
 /** Strips anything that could carry token material out of a provider error. */
 export function sanitizeOAuthError(error: unknown): string {
+  if (error instanceof MeliTokenResponseError) {
+    return `invalid_token_response:${error.issues.map((issue) => `${issue.field}:${issue.code}`).join(',')}`;
+  }
   if (error instanceof MeliError) return `${error.status}:${error.meliCode ?? 'unknown'}`;
   if (error instanceof Error) return error.name;
   return 'unknown_error';

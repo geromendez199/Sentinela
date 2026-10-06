@@ -1,6 +1,6 @@
 import 'server-only';
 import { serverEnv } from '@/lib/env/server';
-import { MeliError } from './errors';
+import { MeliError, MeliTokenResponseError } from './errors';
 import { MELI_TOKEN_URL } from './site-config';
 import { meliOAuthErrorSchema } from './schemas/oauth';
 import { meliTokenResponseSchema } from './schemas/oauth';
@@ -26,7 +26,14 @@ async function postToken(form: Record<string, string>): Promise<MeliTokenRespons
     throw new MeliError('oauth_token_request_failed', response.status, code, 'oauth');
   }
 
-  return meliTokenResponseSchema.parse(payload);
+  const parsed = meliTokenResponseSchema.safeParse(payload);
+  if (!parsed.success) {
+    throw new MeliTokenResponseError(parsed.error.issues.map((issue) => ({
+      field: issue.path.join('.'),
+      code: issue.code,
+    })));
+  }
+  return parsed.data;
 }
 
 /** Authorization Code Grant exchange (section 3.2). */
