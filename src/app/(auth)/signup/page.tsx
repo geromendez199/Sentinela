@@ -36,10 +36,11 @@ export default function SignupPage() {
   }
 
   return (
-    <main className="mx-auto flex min-h-screen max-w-sm flex-col justify-center px-6">
-      <div className="mb-6"><BrandLogo /></div>
-      <h1 className="text-2xl font-semibold">Crear cuenta</h1>
-      <form className="mt-6 space-y-4" onSubmit={onSubmit}>
+    <main className="card mx-auto my-10 flex w-[calc(100%-32px)] max-w-md flex-col px-7 py-10 sm:my-20 sm:px-10">
+      <div className="mb-8"><BrandLogo /></div>
+      <h1 className="text-2xl font-semibold tracking-tight">Crear cuenta</h1>
+      <p className="muted mt-2 text-sm leading-relaxed">Un lugar para observar y entender tu operación.</p>
+      <form className="mt-7 space-y-5" onSubmit={onSubmit}>
         <label className="block text-sm">
           Email
           <input
@@ -51,7 +52,7 @@ export default function SignupPage() {
           />
         </label>
         <label className="block text-sm">
-          Contrasena
+          Contraseña
           <input
             className="mt-1 w-full rounded-md border px-3 py-2"
             type="password"
@@ -63,7 +64,7 @@ export default function SignupPage() {
         </label>
         {message && <p className="text-sm">{message}</p>}
         <button
-          className="w-full rounded-md bg-slate-900 px-4 py-2 text-sm text-white disabled:opacity-60"
+          className="w-full rounded-lg bg-black px-4 py-3 text-sm font-medium text-white hover:bg-neutral-800 disabled:opacity-60"
           disabled={pending}
           type="submit"
         >

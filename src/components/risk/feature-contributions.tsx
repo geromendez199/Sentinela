@@ -17,7 +17,7 @@ export function FeatureContributions({ explanations }: { explanations: Explanati
           </div>
           <div className="mt-1 h-1.5 w-full rounded-full bg-slate-200">
             <div
-              className={entry.direction === 'increases' ? 'h-1.5 rounded-full bg-orange-500' : 'h-1.5 rounded-full bg-emerald-500'}
+              className={entry.direction === 'increases' ? 'h-1.5 rounded-full bg-black' : 'h-1.5 rounded-full bg-neutral-400'}
               style={{ width: `${(Math.abs(entry.contribution) / Math.max(max, 0.0001)) * 100}%` }}
             />
           </div>

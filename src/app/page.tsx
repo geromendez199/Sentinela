@@ -12,11 +12,14 @@ export default async function HomePage() {
   const organizations = user ? await listUserOrganizations() : [];
 
   return (
-    <main className="mx-auto max-w-3xl px-6 py-16">
-      <h1><BrandLogo /></h1>
-      <p className="muted mt-3 text-sm">
-        Observa la verdad oficial, reconstruye el estado reputacional, estima riesgo por venta,
-        sugiere una intervencion segura y mide el resultado.
+    <main className="mx-auto max-w-4xl px-6 py-12 sm:py-20">
+      <div className="mb-12"><BrandLogo /></div>
+      <p className="page-eyebrow mb-3">Tu operación, en perspectiva</p>
+      <h1 className="max-w-2xl text-4xl font-semibold leading-tight tracking-tight sm:text-5xl">Más claridad.
+        <span className="block text-neutral-500">Mejores decisiones.</span>
+      </h1>
+      <p className="muted mt-5 max-w-xl text-base leading-relaxed">
+        Reuní tu operación de Mercado Libre, entendé las señales de reputación y revisá dónde intervenir.
       </p>
 
       {!user ? (
@@ -29,20 +32,20 @@ export default async function HomePage() {
           </Link>
         </div>
       ) : (
-        <section className="mt-8">
-          <Link href="/organizations/new" className="mb-4 inline-block rounded bg-slate-900 px-4 py-2 text-white">Crear organización</Link>
-          <h2 className="text-sm font-medium uppercase tracking-wide muted">Organizaciones</h2>
-          <ul className="mt-3 space-y-2">
+        <section className="mt-12">
+          <Link href="/organizations/new" className="mb-8 inline-block rounded-lg bg-black px-5 py-3 text-sm font-medium text-white hover:bg-neutral-800">Crear organización</Link>
+          <h2 className="page-eyebrow">Organizaciones</h2>
+          <ul className="mt-4 grid gap-4 sm:grid-cols-2">
             {organizations.map((org) => (
               <li key={org.id}>
-                <Link className="card block px-4 py-3 text-sm" href={`/${org.slug}/overview`}>
-                  {org.name}
+                <Link className="card flex items-center justify-between px-6 py-6 text-sm font-semibold" href={`/${org.slug}/overview`}>
+                  {org.name}<span aria-hidden="true" className="muted text-lg">→</span>
                 </Link>
               </li>
             ))}
             {organizations.length === 0 && (
               <li className="muted text-sm">
-                Todavia no perteneces a ninguna organizacion.
+                Creá tu primera organización para empezar a conectar tus cuentas.
               </li>
             )}
           </ul>

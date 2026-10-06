@@ -35,11 +35,12 @@ export function ConnectAccountButton({ orgSlug }: { orgSlug: string }) {
   }
 
   return (
-    <div className="card flex flex-wrap items-center gap-3 p-4">
+    <div className="card flex flex-wrap items-center gap-4 p-5 sm:p-6">
+      <div className="mr-auto"><p className="text-sm font-semibold">Conectá tu cuenta</p><p className="muted mt-1 text-xs">Vinculá Mercado Libre para reunir tu operación en sentinela.</p></div>
       <label className="text-sm">
         Sitio
         <select
-          className="ml-2 rounded border px-2 py-1"
+          className="ml-2 rounded border px-3 py-2"
           value={siteId}
           onChange={(event) => setSiteId(event.target.value)}
         >
@@ -54,7 +55,7 @@ export function ConnectAccountButton({ orgSlug }: { orgSlug: string }) {
         type="button"
         onClick={() => void connect()}
         disabled={pending}
-        className="rounded bg-slate-900 px-3 py-1.5 text-sm text-white disabled:opacity-50"
+        className="rounded-lg bg-black px-5 py-3 text-sm font-medium text-white hover:bg-neutral-800 disabled:opacity-50"
       >
         Vincular cuenta MercadoLibre
       </button>
