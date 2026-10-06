@@ -1,3 +1,4 @@
+import { BrandLogo } from '@/components/brand/brand-logo';
 import Link from 'next/link';
 import { createClient } from '@/lib/supabase/server';
 import { listUserOrganizations } from '@/lib/auth/org-context';
@@ -12,7 +13,7 @@ export default async function HomePage() {
 
   return (
     <main className="mx-auto max-w-3xl px-6 py-16">
-      <h1 className="text-3xl font-semibold">Sentinela ML</h1>
+      <h1><BrandLogo /></h1>
       <p className="muted mt-3 text-sm">
         Observa la verdad oficial, reconstruye el estado reputacional, estima riesgo por venta,
         sugiere una intervencion segura y mide el resultado.
