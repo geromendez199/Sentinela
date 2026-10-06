@@ -2,6 +2,7 @@ import { requirePermission } from '@/lib/auth/require-role';
 import { createClient } from '@/lib/supabase/server';
 import { Card } from '@/components/ui/card';
 import { DEFAULT_CAPABILITIES } from '@/lib/meli/capabilities';
+import { ConnectAccountButton } from '@/components/settings/connect-account-button';
 
 export default async function IntegrationsPage({ params }: { params: Promise<{ orgSlug: string }> }) {
   const { orgSlug } = await params;
@@ -15,6 +16,7 @@ export default async function IntegrationsPage({ params }: { params: Promise<{ o
 
   return (
     <div className="space-y-6">
+      <ConnectAccountButton orgSlug={orgSlug} />
       <Card title="Cuentas vinculadas" subtitle={`Organizacion ${orgSlug}`}>
         <ul className="space-y-2 text-sm">
           {(data ?? []).map((account) => (
