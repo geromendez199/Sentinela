@@ -1,35 +1,59 @@
 @import "tailwindcss";
 
+@theme {
+  --color-slate-50: #fafafa;
+  --color-slate-100: #f4f4f5;
+  --color-slate-200: #e4e4e7;
+  --color-slate-300: #d4d4d8;
+  --color-slate-400: #a1a1aa;
+  --color-slate-500: #71717a;
+  --color-slate-600: #52525b;
+  --color-slate-700: #3f3f46;
+  --color-slate-800: #27272a;
+  --color-slate-900: #18181b;
+  --color-amber-50: #fafafa;
+  --color-amber-100: #f4f4f5;
+  --color-amber-300: #d4d4d8;
+  --color-amber-900: #27272a;
+  --color-emerald-100: #f4f4f5;
+  --color-emerald-800: #27272a;
+}
+
 :root {
-  --background: #f8fafc;
-  --foreground: #0f172a;
-  --surface: #ffffff;
-  --border: #e2e8f0;
-  --muted: #64748b;
+  color-scheme: light;
+  --background: #f7f7f8;
+  --foreground: #18181b;
+  --surface: #fff;
+  --border: #e4e4e7;
+  --muted: #62626c;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0b1120;
-    --foreground: #e2e8f0;
-    --surface: #111827;
-    --border: #1f2937;
-    --muted: #94a3b8;
-  }
-}
-
+* { border-color: var(--border); }
 body {
+  margin: 0;
   background: var(--background);
   color: var(--foreground);
   font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  font-feature-settings: "cv11", "ss01";
 }
-
+::selection { background: #18181b; color: #fff; }
+a, button, input, select { -webkit-tap-highlight-color: transparent; }
+button, a, input, select, textarea { transition: background-color .15s, border-color .15s, box-shadow .15s; }
+button:not(:disabled), select { cursor: pointer; }
+:focus-visible { outline: 2px solid #18181b; outline-offset: 4px; }
+input, select, textarea { background: #fff; color: #18181b; }
+input:not([type="checkbox"]):not([type="radio"]), select, textarea { min-height: 40px; border-radius: 8px; }
+button:disabled { cursor: wait; }
 .card {
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 0.75rem;
+  border-radius: 16px;
+  box-shadow: 0 2px 4px rgb(0 0 0 / .015);
 }
-
-.muted {
-  color: var(--muted);
-}
+a.card:hover { border-color: #a1a1aa; box-shadow: 0 4px 16px rgb(0 0 0 / .04); }
+.muted { color: var(--muted); }
+.page-eyebrow { font-size: 10px; font-weight: 600; letter-spacing: .16em; text-transform: uppercase; color: #71717a; }
+.dashboard-content { max-width: 1440px; margin: 0 auto; padding: 24px 20px 48px; }
+.metric-number { font-size: 42px; font-weight: 600; line-height: 1.2; letter-spacing: -.055em; font-variant-numeric: tabular-nums; }
+@media (min-width: 1024px) { .dashboard-content { padding: 32px 40px 56px; } }
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { transition: none !important; scroll-behavior: auto !important; } }

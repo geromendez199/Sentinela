@@ -45,11 +45,11 @@ export default async function OverviewPage({ params }: { params: Promise<{ orgSl
     <div className="space-y-6">
       {/* Confidence banner: the UI states when data is incomplete (DoD global). */}
       {(backfilling.length > 0 || needsReconnect.length > 0) && (
-        <div className="card border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
+        <div className="card border-neutral-200 bg-white p-4 text-sm leading-relaxed text-neutral-700">
           {backfilling.length > 0 && (
             <p>
-              {backfilling.length} cuenta(s) en backfill: los indicadores son parciales hasta que
-              termine la carga historica.
+              {backfilling.length} cuenta(s) en carga histórica: los indicadores son parciales hasta que
+              termine la carga histórica.
             </p>
           )}
           {needsReconnect.length > 0 && (
@@ -65,13 +65,13 @@ export default async function OverviewPage({ params }: { params: Promise<{ orgSl
 
       <div className="grid gap-4 md:grid-cols-3">
         <Card title="Cuentas vinculadas">
-          <p className="text-3xl font-semibold">{formatCount(accountRows.length)}</p>
+          <p className="metric-number">{formatCount(accountRows.length)}</p>
           <p className="muted mt-1 text-xs">
             {accountRows.filter((a) => a.status === 'active').length} activas
           </p>
         </Card>
         <Card title="Ordenes en riesgo alto/critico">
-          <p className="text-3xl font-semibold">{formatCount(risk.data?.length ?? 0)}</p>
+          <p className="metric-number">{formatCount(risk.data?.length ?? 0)}</p>
           <p className="muted mt-1 text-xs">Score heuristico, no calibrado.</p>
         </Card>
         <Card title="Gemelo de reputacion">
@@ -88,7 +88,7 @@ export default async function OverviewPage({ params }: { params: Promise<{ orgSl
         </Card>
       </div>
 
-      <Card title="Reputacion oficial observada" subtitle="Snapshot de GET /users/{id}.seller_reputation">
+      <Card title="Reputacion oficial observada" subtitle="Última información recibida de Mercado Libre.">
         {(reputation.data ?? []).length === 0 ? (
           <EmptyState message="Sin snapshots oficiales todavia." />
         ) : (

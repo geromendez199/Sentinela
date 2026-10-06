@@ -1,29 +1,8 @@
-import { BrandLogo } from '@/components/brand/brand-logo';
-import Link from 'next/link';
 import { requireOrg } from '@/lib/auth/require-role';
-import { OrgNav } from '@/components/layout/org-nav';
+import { DashboardShell } from '@/components/layout/dashboard-shell';
 
-export default async function OrgLayout({
-  children,
-  params,
-}: {
-  children: React.ReactNode;
-  params: Promise<{ orgSlug: string }>;
-}) {
+export default async function OrgLayout({ children, params }: { children: React.ReactNode; params: Promise<{ orgSlug: string }> }) {
   const { orgSlug } = await params;
   const ctx = await requireOrg(orgSlug);
-
-  return (
-    <div className="min-h-screen">
-      <header className="flex items-center justify-between border-b px-4 py-3">
-        <Link href={`/${ctx.orgSlug}/overview`} className="flex min-w-0 flex-wrap items-center gap-3 text-sm font-semibold">
-          <BrandLogo />
-          <span className="break-words">{ctx.orgName}</span>
-        </Link>
-        <span className="muted text-xs">rol: {ctx.role}</span>
-      </header>
-      <OrgNav orgSlug={ctx.orgSlug} />
-      <main className="px-4 py-6">{children}</main>
-    </div>
-  );
+  return <DashboardShell orgSlug={ctx.orgSlug} orgName={ctx.orgName} role={ctx.role}>{children}</DashboardShell>;
 }

@@ -20,12 +20,12 @@ export function DataTable<Row>({
   if (rows.length === 0) return <EmptyState message={empty} />;
 
   return (
-    <div className="overflow-x-auto">
+    <div className="overflow-x-auto rounded-xl border">
       <table className="w-full text-left text-sm">
-        <thead className="muted text-xs uppercase">
+        <thead className="bg-neutral-50 text-[10px] uppercase tracking-wider text-neutral-500">
           <tr>
             {columns.map((column) => (
-              <th key={column.key} className="px-2 py-2 font-medium">
+              <th key={column.key} className="px-4 py-3.5 font-semibold">
                 {column.header}
               </th>
             ))}
@@ -33,9 +33,9 @@ export function DataTable<Row>({
         </thead>
         <tbody>
           {rows.map((row) => (
-            <tr key={rowKey(row)} className="border-t">
+            <tr key={rowKey(row)} className="border-t transition-colors hover:bg-neutral-50">
               {columns.map((column) => (
-                <td key={column.key} className="px-2 py-2">
+                <td key={column.key} className="px-4 py-4">
                   {column.render(row)}
                 </td>
               ))}

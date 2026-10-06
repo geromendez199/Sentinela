@@ -7,6 +7,8 @@ import { formatDateTime } from '@/lib/utils/format';
 import { ConnectAccountButton } from '@/components/settings/connect-account-button';
 import { hasPermission } from '@/lib/auth/permissions';
 
+const STATUS_LABELS: Record<string, string> = { onboarding: 'Preparando conexión', backfilling: 'Cargando historial', active: 'Activa', degraded: 'Requiere revisión', reconnect_required: 'Reconexión pendiente', restricted: 'Restringida', disconnected: 'Desconectada' };
+
 const STATUS_HELP: Record<string, string> = {
   onboarding: 'OAuth completado, sin bootstrap. No se muestra score definitivo.',
   backfilling: 'Carga historica en progreso; confianza parcial.',
@@ -51,7 +53,7 @@ export default async function AccountsPage({ params }: { params: Promise<{ orgSl
             {
               key: 'status',
               header: 'Estado',
-              render: (row) => <span title={STATUS_HELP[row.status]}>{row.status}</span>,
+              render: (row) => <span className="inline-flex items-center gap-2 whitespace-nowrap rounded-full border bg-neutral-50 px-3 py-1 text-xs" title={STATUS_HELP[row.status]}><span aria-hidden="true" className={`h-1.5 w-1.5 rounded-full ${row.status === 'active' ? 'bg-black' : 'bg-neutral-400'}`} />{STATUS_LABELS[row.status] ?? row.status}</span>,
             },
             { key: 'linked', header: 'Vinculada', render: (row) => formatDateTime(row.linked_at) },
             { key: 'api', header: 'Ultimo API ok', render: (row) => formatDateTime(row.last_api_ok_at) },
