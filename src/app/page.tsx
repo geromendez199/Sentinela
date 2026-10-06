@@ -29,6 +29,7 @@ export default async function HomePage() {
         </div>
       ) : (
         <section className="mt-8">
+          <Link href="/organizations/new" className="mb-4 inline-block rounded bg-slate-900 px-4 py-2 text-white">Crear organización</Link>
           <h2 className="text-sm font-medium uppercase tracking-wide muted">Organizaciones</h2>
           <ul className="mt-3 space-y-2">
             {organizations.map((org) => (

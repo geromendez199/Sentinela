@@ -13,6 +13,7 @@ export function ConnectAccountButton({ orgSlug }: { orgSlug: string }) {
     setPending(true);
     setError(null);
 
+    try {
     const response = await fetch('/api/integrations/meli/connect', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -27,6 +28,10 @@ export function ConnectAccountButton({ orgSlug }: { orgSlug: string }) {
 
     const payload = (await response.json()) as { url: string };
     window.location.href = payload.url;
+    } catch {
+      setError('No pudimos conectar con el servicio. Intentá nuevamente.');
+      setPending(false);
+    }
   }
 
   return (
