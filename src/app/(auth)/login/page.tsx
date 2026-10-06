@@ -1,5 +1,7 @@
 'use client';
 
+import { BrandLogo } from '@/components/brand/brand-logo';
+
 import { Suspense, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
@@ -33,6 +35,7 @@ function LoginForm() {
 
   return (
     <main className="mx-auto flex min-h-screen max-w-sm flex-col justify-center px-6">
+      <div className="mb-6"><BrandLogo /></div>
       <h1 className="text-2xl font-semibold">Iniciar sesion</h1>
       <form className="mt-6 space-y-4" onSubmit={onSubmit}>
         <label className="block text-sm">

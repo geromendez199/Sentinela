@@ -1,3 +1,4 @@
+import { BrandLogo } from '@/components/brand/brand-logo';
 import Link from 'next/link';
 import { requireOrg } from '@/lib/auth/require-role';
 import { OrgNav } from '@/components/layout/org-nav';
@@ -15,8 +16,9 @@ export default async function OrgLayout({
   return (
     <div className="min-h-screen">
       <header className="flex items-center justify-between border-b px-4 py-3">
-        <Link href={`/${ctx.orgSlug}/overview`} className="text-sm font-semibold">
-          Sentinela ML · {ctx.orgName}
+        <Link href={`/${ctx.orgSlug}/overview`} className="flex min-w-0 flex-wrap items-center gap-3 text-sm font-semibold">
+          <BrandLogo />
+          <span className="break-words">{ctx.orgName}</span>
         </Link>
         <span className="muted text-xs">rol: {ctx.role}</span>
       </header>
