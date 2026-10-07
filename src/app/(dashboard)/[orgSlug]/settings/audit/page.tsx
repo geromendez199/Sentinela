@@ -14,7 +14,7 @@ export default async function AuditPage({ params }: { params: Promise<{ orgSlug:
     .select('id, action, resource_type, resource_id, actor_user_id, correlation_id, created_at')
     .eq('org_id', ctx.orgId)
     .order('created_at', { ascending: false })
-    .limit(100);
+    .limit(100).throwOnError();
 
   return (
     <Card title="Auditoria" subtitle={`Organizacion ${orgSlug}. Nunca contiene tokens ni secretos.`}>

@@ -15,7 +15,7 @@ export default async function RootCausesPage({ params }: { params: Promise<{ org
     .eq('org_id', ctx.orgId)
     .eq('status', 'active')
     .order('sample_count', { ascending: false })
-    .limit(50);
+    .limit(50).throwOnError();
 
   return (
     <Card

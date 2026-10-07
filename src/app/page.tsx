@@ -1,9 +1,11 @@
+import { ConnectionNotice } from '@/components/accounts/connection-notice';
 import { BrandLogo } from '@/components/brand/brand-logo';
 import Link from 'next/link';
 import { createClient } from '@/lib/supabase/server';
 import { listUserOrganizations } from '@/lib/auth/org-context';
 
-export default async function HomePage() {
+export default async function HomePage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
+  const query = await searchParams;
   const supabase = await createClient();
   const {
     data: { user },
@@ -14,6 +16,7 @@ export default async function HomePage() {
   return (
     <main className="mx-auto max-w-4xl px-6 py-12 sm:py-20">
       <div className="mb-12"><BrandLogo /></div>
+      <ConnectionNotice error={typeof query.meli_link_error === 'string' ? query.meli_link_error : undefined} linked={typeof query.meli_linked === 'string' ? query.meli_linked : undefined} />
       <p className="page-eyebrow mb-3">Tu operación, en perspectiva</p>
       <h1 className="max-w-2xl text-4xl font-semibold leading-tight tracking-tight sm:text-5xl">Más claridad.
         <span className="block text-neutral-500">Mejores decisiones.</span>
@@ -33,6 +36,8 @@ export default async function HomePage() {
         </div>
       ) : (
         <section className="mt-12">
+          <p className="muted mb-4 break-all text-xs">Tu identificador para unirte a un equipo: <span className="select-all font-mono">{user.id}</span></p>
+          <form action="/auth/signout" method="post" className="mb-5"><button className="text-xs underline">Cerrar sesión</button></form>
           <Link href="/organizations/new" className="mb-8 inline-block rounded-lg bg-black px-5 py-3 text-sm font-medium text-white hover:bg-neutral-800">Crear organización</Link>
           <h2 className="page-eyebrow">Organizaciones</h2>
           <ul className="mt-4 grid gap-4 sm:grid-cols-2">

@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { BrandLogo } from '@/components/brand/brand-logo';
 
 import { useState } from 'react';
@@ -19,6 +20,7 @@ export default function SignupPage() {
     setPending(true);
     setMessage(null);
 
+    try {
     const supabase = createClient();
     const { error } = await supabase.auth.signUp({
       email,
@@ -33,6 +35,8 @@ export default function SignupPage() {
     }
     setMessage('Revisa tu email para confirmar la cuenta.');
     router.refresh();
+    } catch { setMessage('No pudimos conectar. Intentá nuevamente.'); }
+    finally { setPending(false); }
   }
 
   return (
@@ -45,7 +49,7 @@ export default function SignupPage() {
           Email
           <input
             className="mt-1 w-full rounded-md border px-3 py-2"
-            type="email"
+            type="email" autoComplete="email"
             required
             value={email}
             onChange={(event) => setEmail(event.target.value)}
@@ -55,7 +59,7 @@ export default function SignupPage() {
           Contraseña
           <input
             className="mt-1 w-full rounded-md border px-3 py-2"
-            type="password"
+            type="password" autoComplete="new-password"
             minLength={12}
             required
             value={password}
@@ -71,6 +75,7 @@ export default function SignupPage() {
           Registrarme
         </button>
       </form>
+      <Link href="/login" className="mt-6 text-sm underline">Ya tengo una cuenta</Link>
     </main>
   );
 }

@@ -1,7 +1,10 @@
+import { SyncPanel } from '@/components/accounts/sync-panel';
+import { DisconnectAccountButton } from '@/components/settings/disconnect-account-button';
+import { hasPermission } from '@/lib/auth/permissions';
 import { notFound } from 'next/navigation';
 import { requireOrg } from '@/lib/auth/require-role';
 import { createClient } from '@/lib/supabase/server';
-import { Card, EmptyState } from '@/components/ui/card';
+import { Card } from '@/components/ui/card';
 import { formatDateTime } from '@/lib/utils/format';
 
 export default async function AccountDetailPage({
@@ -24,6 +27,7 @@ export default async function AccountDetailPage({
       .limit(20),
   ]);
 
+  if (account.error || jobs.error) throw new Error('account_load_failed');
   if (!account.data) notFound();
 
   return (
@@ -49,25 +53,8 @@ export default async function AccountDetailPage({
         </dl>
       </Card>
 
-      <Card title="Jobs de sincronizacion" subtitle="El backfill es reanudable: nunca reinicia desde el dia 1">
-        {(jobs.data ?? []).length === 0 ? (
-          <EmptyState message="Sin jobs." />
-        ) : (
-          <ul className="space-y-2 text-sm">
-            {(jobs.data ?? []).map((job) => (
-              <li key={job.id} className="flex flex-wrap justify-between gap-2">
-                <span>
-                  {job.kind} · {job.resource_kind ?? '—'}
-                </span>
-                <span className="muted">
-                  {job.status} · {(Number(job.progress) * 100).toFixed(1)}% · {job.processed_count} registros
-                </span>
-                {job.last_error && <span className="w-full text-xs text-red-600">{job.last_error}</span>}
-              </li>
-            ))}
-          </ul>
-        )}
-      </Card>
+      <SyncPanel jobs={jobs.data ?? []} />
+      {account.data.status !== 'disconnected' && hasPermission(ctx.role, 'accounts:disconnect') && <Card title="Administrar conexión"><DisconnectAccountButton orgSlug={orgSlug} accountId={accountId} /></Card>}
       <p className="muted text-xs">Organizacion {orgSlug}</p>
     </div>
   );

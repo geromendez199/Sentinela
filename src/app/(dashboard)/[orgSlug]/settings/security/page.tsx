@@ -11,7 +11,7 @@ export default async function SecurityPage({ params }: { params: Promise<{ orgSl
   const { data } = await supabase
     .from('meli_accounts')
     .select('id, nickname, status, status_reason, updated_at')
-    .eq('org_id', ctx.orgId);
+    .eq('org_id', ctx.orgId).throwOnError();
 
   return (
     <div className="space-y-6">

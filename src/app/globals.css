@@ -57,3 +57,8 @@ a.card:hover { border-color: #a1a1aa; box-shadow: 0 4px 16px rgb(0 0 0 / .04); }
 .metric-number { font-size: 42px; font-weight: 600; line-height: 1.2; letter-spacing: -.055em; font-variant-numeric: tabular-nums; }
 @media (min-width: 1024px) { .dashboard-content { padding: 32px 40px 56px; } }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { transition: none !important; scroll-behavior: auto !important; } }
+
+progress { appearance: none; overflow: hidden; border-radius: 999px; background: #e5e5e5; }
+progress::-webkit-progress-bar { background: #e5e5e5; border-radius: 999px; }
+progress::-webkit-progress-value { background: #171717; border-radius: 999px; }
+progress::-moz-progress-bar { background: #171717; border-radius: 999px; }

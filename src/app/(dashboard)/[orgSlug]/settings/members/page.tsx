@@ -1,3 +1,4 @@
+import { MemberManager } from '@/components/settings/member-manager';
 import { requirePermission } from '@/lib/auth/require-role';
 import { createClient } from '@/lib/supabase/server';
 import { Card } from '@/components/ui/card';
@@ -13,12 +14,12 @@ export default async function MembersPage({ params }: { params: Promise<{ orgSlu
     .from('organization_members')
     .select('user_id, role, created_at')
     .eq('org_id', ctx.orgId)
-    .order('created_at', { ascending: true });
+    .order('created_at', { ascending: true }).throwOnError();
 
   return (
     <Card
       title="Miembros"
-      subtitle="La gestion pasa por un RPC auditado que impide degradar o remover al ultimo owner."
+      subtitle="Sumá personas a tu organización y definí qué pueden hacer. Siempre debe quedar al menos un propietario."
     >
       <DataTable
         rows={data ?? []}
@@ -30,6 +31,7 @@ export default async function MembersPage({ params }: { params: Promise<{ orgSlu
           { key: 'since', header: 'Desde', render: (row) => formatDateTime(row.created_at) },
         ]}
       />
+    <MemberManager orgId={ctx.orgId} actorRole={ctx.role} members={data ?? []} />
     </Card>
   );
 }

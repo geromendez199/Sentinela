@@ -1,3 +1,5 @@
+import { ListFilters, Pagination } from '@/components/ui/list-controls';
+import { listQuery, PAGE_SIZE, numericSearch, type ListParams } from '@/lib/ui/list-query';
 import Link from 'next/link';
 import { requireOrg } from '@/lib/auth/require-role';
 import { createClient } from '@/lib/supabase/server';
@@ -5,25 +7,31 @@ import { Card } from '@/components/ui/card';
 import { DataTable } from '@/components/ui/data-table';
 import { formatDateTime } from '@/lib/utils/format';
 
-export default async function ClaimsPage({ params }: { params: Promise<{ orgSlug: string }> }) {
+export default async function ClaimsPage({ params, searchParams }: { params: Promise<{ orgSlug: string }>; searchParams: Promise<ListParams> }) {
   const { orgSlug } = await params;
   const ctx = await requireOrg(orgSlug);
   const supabase = await createClient();
+  const statuses = ['opened', 'closed'];
+  const filters = listQuery(await searchParams, statuses);
 
-  const { data } = await supabase
+  let query = supabase
     .from('claims')
     .select('claim_id, order_id, status, stage, type, affects_reputation, due_date, date_created')
     .eq('org_id', ctx.orgId)
     .order('date_created', { ascending: false })
-    .limit(100);
+    .order('claim_id', { ascending: false });
+  if (filters.status) query = query.eq('status', filters.status);
+  if (filters.q) query = query.eq('claim_id', numericSearch(filters.q));
+  const { data } = await query.range((filters.page - 1) * PAGE_SIZE, filters.page * PAGE_SIZE).throwOnError();
 
   return (
     <Card
       title="Reclamos"
-      subtitle="affects-reputation se consulta al endpoint oficial y se reconsulta tras cambios de estado"
+      subtitle="El estado y el impacto en reputación informados por Mercado Libre."
     >
+      <ListFilters {...filters} statuses={statuses} placeholder="Número de reclamo" />
       <DataTable
-        rows={data ?? []}
+        rows={(data ?? []).slice(0, PAGE_SIZE)}
         rowKey={(row) => String(row.claim_id)}
         empty="Sin reclamos sincronizados."
         columns={[
@@ -42,11 +50,12 @@ export default async function ClaimsPage({ params }: { params: Promise<{ orgSlug
           {
             key: 'affects',
             header: 'Afecta reputacion',
-            render: (row) => row.affects_reputation ?? 'sin consultar',
+            render: (row) => row.affects_reputation === null ? 'Sin consultar' : row.affects_reputation ? 'Sí' : 'No',
           },
           { key: 'due', header: 'Vence', render: (row) => formatDateTime(row.due_date) },
         ]}
       />
+    <Pagination {...filters} hasNext={(data?.length ?? 0) > PAGE_SIZE} />
     </Card>
   );
 }

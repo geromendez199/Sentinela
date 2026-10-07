@@ -1,3 +1,4 @@
+import { RefreshButton } from '@/components/ui/refresh-button';
 import Link from 'next/link';
 import { requireOrg } from '@/lib/auth/require-role';
 import { createClient } from '@/lib/supabase/server';
@@ -22,7 +23,7 @@ export default async function OverviewPage({ params }: { params: Promise<{ orgSl
       .limit(10),
     supabase
       .from('risk_scores')
-      .select('id, order_id, risk_probability, risk_band, computed_at')
+      .select('id, order_id, risk_probability, risk_band, computed_at', { count: 'exact' })
       .eq('org_id', ctx.orgId)
       .in('risk_band', ['high', 'critical'])
       .order('computed_at', { ascending: false })
@@ -36,6 +37,9 @@ export default async function OverviewPage({ params }: { params: Promise<{ orgSl
       .limit(10),
   ]);
 
+  for (const result of [accounts, reputation, computations, risk, alerts, actions]) {
+    if (result.error) throw new Error('overview_load_failed');
+  }
   const accountRows = accounts.data ?? [];
   const backfilling = accountRows.filter((account) => account.status === 'backfilling');
   const needsReconnect = accountRows.filter((account) => account.status === 'reconnect_required');
@@ -43,13 +47,14 @@ export default async function OverviewPage({ params }: { params: Promise<{ orgSl
 
   return (
     <div className="space-y-6">
+      <div className="flex justify-end"><RefreshButton /></div>
       {/* Confidence banner: the UI states when data is incomplete (DoD global). */}
       {(backfilling.length > 0 || needsReconnect.length > 0) && (
         <div className="card border-neutral-200 bg-white p-4 text-sm leading-relaxed text-neutral-700">
           {backfilling.length > 0 && (
             <p>
-              {backfilling.length} cuenta(s) en carga histórica: los indicadores son parciales hasta que
-              termine la carga histórica.
+              {backfilling.length} cuenta(s) con carga histórica pendiente: los indicadores son parciales hasta que
+              termine la carga histórica. <Link className="underline" href={`/${orgSlug}/accounts`}>Ver estado de las cuentas</Link>
             </p>
           )}
           {needsReconnect.length > 0 && (
@@ -65,14 +70,14 @@ export default async function OverviewPage({ params }: { params: Promise<{ orgSl
 
       <div className="grid gap-4 md:grid-cols-3">
         <Card title="Cuentas vinculadas">
-          <p className="metric-number">{formatCount(accountRows.length)}</p>
+          <p className="metric-number">{formatCount(accountRows.filter(a => a.status !== 'disconnected').length)}</p>
           <p className="muted mt-1 text-xs">
             {accountRows.filter((a) => a.status === 'active').length} activas
           </p>
         </Card>
-        <Card title="Ordenes en riesgo alto/critico">
-          <p className="metric-number">{formatCount(risk.data?.length ?? 0)}</p>
-          <p className="muted mt-1 text-xs">Score heuristico, no calibrado.</p>
+        <Card title="Evaluaciones de riesgo alto/crítico">
+          <p className="metric-number">{backfilling.length && !risk.data?.length ? '—' : formatCount(risk.count ?? 0)}</p>
+          <p className="muted mt-1 text-xs">Score heurístico. Las evaluaciones pueden incluir una misma orden.</p>
         </Card>
         <Card title="Gemelo de reputacion">
           {latestComputation ? (

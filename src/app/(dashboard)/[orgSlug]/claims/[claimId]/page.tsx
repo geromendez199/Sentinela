@@ -25,6 +25,9 @@ export default async function ClaimDetailPage({
       .eq('claim_id', numericClaimId)
       .order('created_at', { ascending: false }),
   ]);
+  for (const result of [claim, drafts]) {
+    if (result.error) throw new Error('data_load_failed');
+  }
 
   if (!claim.data) notFound();
 

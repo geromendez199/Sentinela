@@ -17,11 +17,16 @@ export interface ApprovableAction {
  */
 export function ActionApprovalPanel({ orgSlug, action }: { orgSlug: string; action: ApprovableAction }) {
   const router = useRouter();
-  const [pending, startTransition] = useTransition();
+  const [refreshing, startTransition] = useTransition();
+  const [requesting, setRequesting] = useState(false);
+  const pending = refreshing || requesting;
+  const [message, setMessage] = useState('');
   const [error, setError] = useState<string | null>(null);
 
   async function call(path: string) {
-    setError(null);
+    if (pending) return;
+    setError(null); setMessage(''); setRequesting(true);
+    try {
     const response = await fetch(path, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -29,10 +34,13 @@ export function ActionApprovalPanel({ orgSlug, action }: { orgSlug: string; acti
     });
     if (!response.ok) {
       const payload = (await response.json().catch(() => ({}))) as { error?: string };
-      setError(payload.error ?? 'request_failed');
+      setError(payload.error === 'writes_disabled_globally' ? 'Las acciones sobre Mercado Libre todavía están deshabilitadas.' : response.status === 403 ? 'Tu rol no permite esta acción.' : 'No se pudo completar la acción. Actualizá los datos e intentá nuevamente.');
       return;
     }
+    setMessage(path.endsWith('/execute') ? 'Solicitud en cola. La ejecución todavía está pendiente.' : path.endsWith('/cancel') ? 'Acción cancelada.' : 'Acción aprobada. Todavía no fue ejecutada.');
     startTransition(() => router.refresh());
+    } catch { setError('No pudimos conectar. Intentá nuevamente.'); }
+    finally { setRequesting(false); }
   }
 
   const canApprove = action.status === 'draft' || action.status === 'pending_approval';
@@ -45,7 +53,8 @@ export function ActionApprovalPanel({ orgSlug, action }: { orgSlug: string; acti
         <span className="muted">{action.status}</span>
       </div>
       {action.rendered_text && <p className="mt-2 whitespace-pre-wrap text-sm">{action.rendered_text}</p>}
-      {error && <p className="mt-2 text-xs text-red-600">{error}</p>}
+      {message && <p role="status" className="mt-3 text-xs">{message}</p>}
+      {error && <p role="alert" className="mt-2 text-xs text-red-600">{error}</p>}
       <div className="mt-3 flex gap-2">
         <button
           type="button"
@@ -65,7 +74,7 @@ export function ActionApprovalPanel({ orgSlug, action }: { orgSlug: string; acti
         </button>
         <button
           type="button"
-          disabled={pending || action.status === 'executed'}
+          disabled={pending || !['draft', 'pending_approval', 'approved'].includes(action.status)}
           onClick={() => void call(`/api/actions/${action.id}/cancel`)}
           className="rounded border px-3 py-1 text-xs disabled:opacity-40"
         >
