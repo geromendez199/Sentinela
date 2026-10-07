@@ -62,7 +62,7 @@ async function handleOrder(client: MeliClient, message: EventMessage, orderId: s
   });
   if (error) throw new RetryableError(`upsert_order_failed:${error.code ?? 'unknown'}`);
 
-  await sendOnce('derived_jobs', `${message.event_key}:risk_score:order:${orderId}`, {
+  await sendOnce('risk_jobs', `${message.event_key}:risk_score:order:${orderId}`, {
     job: 'risk_score',
     org_id: message.org_id,
     meli_account_id: message.meli_account_id,
@@ -94,7 +94,7 @@ async function handleShipment(client: MeliClient, message: EventMessage, shipmen
   });
   if (error) throw new RetryableError(`upsert_shipment_failed:${error.code ?? 'unknown'}`);
 
-  await sendOnce('derived_jobs', `${message.event_key}:risk_score:shipment:${shipmentId}`, {
+  await sendOnce('risk_jobs', `${message.event_key}:risk_score:shipment:${shipmentId}`, {
     job: 'risk_score',
     org_id: message.org_id,
     meli_account_id: message.meli_account_id,
@@ -126,11 +126,8 @@ async function handleClaim(client: MeliClient, message: EventMessage, claimId: s
   });
   if (error) throw new RetryableError(`upsert_claim_failed:${error.code ?? 'unknown'}`);
 
-  await sendOnce('derived_jobs', `${message.event_key}:reputation_reconcile`, {
-    job: 'reputation_reconcile',
-    org_id: message.org_id,
-    meli_account_id: message.meli_account_id,
-  });
+  // Reputation reconciliation is account-scoped and already runs every five
+  // minutes. It intentionally does not create an unconsumed queue message.
 }
 
 async function handleMessages(client: MeliClient, message: EventMessage, packId: string): Promise<void> {
@@ -172,7 +169,7 @@ async function handleMessages(client: MeliClient, message: EventMessage, packId:
   if (error) throw new RetryableError(`upsert_messages_failed:${error.code ?? 'unknown'}`);
 
   if (sanitized.length > 0) {
-    await sendOnce('derived_jobs', `${message.event_key}:classify_text:${packId}`, {
+    await sendOnce('classification_jobs', `${message.event_key}:classify_text:${packId}`, {
       job: 'classify_text',
       org_id: message.org_id,
       meli_account_id: message.meli_account_id,

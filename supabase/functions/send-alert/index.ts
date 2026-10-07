@@ -2,7 +2,7 @@ import { adminClient } from '../_shared/db.ts';
 import { loadNotificationsEnv } from '../_shared/env.ts';
 import { requireInternalInvocation } from '../_shared/internal-auth.ts';
 import { log } from '../_shared/logging.ts';
-import { deleteMessage, readBatch, requeue } from '../_shared/queue.ts';
+import { deadLetter, deleteMessage, readBatch, requeue } from '../_shared/queue.ts';
 
 /**
  * Outbound alerting. The payload is minimal and operational: no buyer PII, no
@@ -26,11 +26,21 @@ async function deliver(alert: {
   title: string;
   body: string;
   channels: unknown;
-}): Promise<void> {
+}): Promise<'sent' | 'not_requested'> {
   const env = loadNotificationsEnv();
-  if (env.notificationsProvider === 'none' || !env.notificationsApiKey) {
-    log('info', 'alert_delivery_skipped', { alert_id: alert.id, reason: 'provider_disabled' });
-    return;
+  const channels = Array.isArray(alert.channels) ? alert.channels : [];
+  const recipients = channels
+    .filter((channel): channel is { type: string; to: string } => {
+      if (!channel || typeof channel !== 'object') return false;
+      const candidate = channel as { type?: unknown; to?: unknown };
+      return candidate.type === 'email' && typeof candidate.to === 'string';
+    })
+    .map((channel) => channel.to.trim().toLowerCase())
+    .filter((email) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email));
+
+  if (recipients.length === 0) return 'not_requested';
+  if (env.notificationsProvider !== 'resend' || !env.notificationsApiKey || !env.notificationsFromEmail) {
+    throw new Error('notification_provider_not_configured');
   }
 
   const payload = {
@@ -40,16 +50,23 @@ async function deliver(alert: {
     summary: alert.body.slice(0, 500),
   };
 
-  const response = await fetch(`https://api.${env.notificationsProvider}.example/v1/notify`, {
+  const response = await fetch('https://api.resend.com/emails', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       Authorization: `Bearer ${env.notificationsApiKey}`,
+      'Idempotency-Key': `sentinela-alert-${alert.id}`,
     },
-    body: JSON.stringify(payload),
+    body: JSON.stringify({
+      from: env.notificationsFromEmail,
+      to: recipients,
+      subject: `[Sentinela · ${payload.severity.toUpperCase()}] ${payload.title}`,
+      text: `${payload.summary}\n\nIngresá a Sentinela para revisar el contexto y decidir una acción.`,
+    }),
   });
 
   if (!response.ok) throw new Error(`notification_failed:${response.status}`);
+  return 'sent';
 }
 
 Deno.serve(async (request) => {
@@ -61,6 +78,8 @@ Deno.serve(async (request) => {
 
   let sent = 0;
   let throttled = 0;
+  let skipped = 0;
+  let deadLettered = 0;
 
   for (const entry of messages) {
     try {
@@ -89,7 +108,12 @@ Deno.serve(async (request) => {
         continue;
       }
 
-      await deliver(alert);
+      const outcome = await deliver(alert);
+      if (outcome === 'not_requested') {
+        skipped += 1;
+        await deleteMessage(QUEUE, entry.msg_id);
+        continue;
+      }
       await adminClient().from('internal_metrics').insert({
         org_id: alert.org_id,
         name: `alert_delivered:${alert.kind}`,
@@ -100,13 +124,16 @@ Deno.serve(async (request) => {
       await deleteMessage(QUEUE, entry.msg_id);
       sent += 1;
     } catch (error) {
-      log('warn', 'alert_delivery_failed', { error: String(error) });
-      if (entry.read_ct >= 4) await deleteMessage(QUEUE, entry.msg_id);
-      else await requeue(QUEUE, entry.msg_id, 60 * entry.read_ct);
+      const failure = error instanceof Error ? error.message : 'unknown_notification_error';
+      log('warn', 'alert_delivery_failed', { failure_class: error instanceof Error ? error.name : 'UnknownError' });
+      if (entry.read_ct >= 3) {
+        await deadLetter(QUEUE, entry, error instanceof Error ? error.name : 'UnknownError', failure);
+        deadLettered += 1;
+      } else await requeue(QUEUE, entry.msg_id, 60 * entry.read_ct);
     }
   }
 
-  return new Response(JSON.stringify({ sent, throttled }), {
+  return new Response(JSON.stringify({ sent, throttled, skipped, dead_lettered: deadLettered }), {
     headers: { 'Content-Type': 'application/json' },
   });
 });

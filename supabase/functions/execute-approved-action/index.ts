@@ -4,7 +4,7 @@ import { RetryableError } from '../_shared/errors.ts';
 import { requireInternalInvocation } from '../_shared/internal-auth.ts';
 import { log } from '../_shared/logging.ts';
 import { MeliClient } from '../_shared/meli-client.ts';
-import { deleteMessage, readBatch, requeue } from '../_shared/queue.ts';
+import { deadLetter, deleteMessage, readBatch, requeue } from '../_shared/queue.ts';
 
 /**
  * Executes an approved action (section 8.4).
@@ -17,7 +17,7 @@ import { deleteMessage, readBatch, requeue } from '../_shared/queue.ts';
  * reason. There is no "temporary" shortcut.
  */
 
-const QUEUE = 'derived_jobs';
+const QUEUE = 'action_jobs';
 const POST_SALE_MAX_CHARS = 350;
 const EXECUTION_STALE_SECONDS = 90;
 const MAX_EXECUTION_READS = 3;
@@ -405,9 +405,10 @@ Deno.serve(async (request) => {
   const messages = await readBatch<Job>(QUEUE, 120, Math.min(20, body.batch_size ?? 10));
 
   let executed = 0;
+  let deadLettered = 0;
   for (const entry of messages) {
-    if (entry.message.job !== 'execute_approved_action') continue;
     try {
+      if (entry.message.job !== 'execute_approved_action') throw new Error('unexpected_job_kind');
       await execute(entry.message);
       await deleteMessage(QUEUE, entry.msg_id);
       executed += 1;
@@ -422,7 +423,13 @@ Deno.serve(async (request) => {
 
       if (entry.read_ct >= MAX_EXECUTION_READS) {
         await markRetryExhausted(entry.message, error);
-        await deleteMessage(QUEUE, entry.msg_id);
+        await deadLetter(
+          QUEUE,
+          entry,
+          error instanceof Error ? error.name : 'UnknownError',
+          error instanceof Error ? error.message : 'unknown_action_error',
+        );
+        deadLettered += 1;
       } else {
         const retryAfterMs = error instanceof RetryableError ? error.retryAfterMs : null;
         const delay = Math.ceil((retryAfterMs ?? 60_000 * entry.read_ct) / 1000);
@@ -431,5 +438,5 @@ Deno.serve(async (request) => {
     }
   }
 
-  return new Response(JSON.stringify({ executed }), { headers: { 'Content-Type': 'application/json' } });
+  return new Response(JSON.stringify({ executed, dead_lettered: deadLettered }), { headers: { 'Content-Type': 'application/json' } });
 });

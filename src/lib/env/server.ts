@@ -20,6 +20,7 @@ const serverEnvSchema = z.object({
   AI_EMBEDDING_DIMENSIONS: z.coerce.number().int().default(1536),
   NOTIFICATIONS_PROVIDER: z.string().default('none'),
   NOTIFICATIONS_API_KEY: z.string().optional(),
+  NOTIFICATIONS_FROM_EMAIL: z.string().email().optional(),
 });
 
 export type ServerEnv = z.infer<typeof serverEnvSchema>;
