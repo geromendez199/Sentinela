@@ -51,3 +51,31 @@ export async function send(queue: string, message: Record<string, unknown>): Pro
     p_message: message,
   });
 }
+
+export async function sendOnce(
+  queue: string,
+  idempotencyKey: string,
+  message: Record<string, unknown>,
+): Promise<void> {
+  await rpc<number>('backend_queue_send_once', {
+    p_queue: queue,
+    p_idempotency_key: idempotencyKey,
+    p_message: message,
+  });
+}
+
+export async function deadLetter<T>(
+  sourceQueue: string,
+  entry: QueueMessage<T>,
+  failureClass: string,
+  failureReason: string,
+): Promise<void> {
+  await rpc<number>('backend_queue_dead_letter', {
+    p_source_queue: sourceQueue,
+    p_source_message_id: entry.msg_id,
+    p_source_read_count: entry.read_ct,
+    p_message: entry.message,
+    p_failure_class: failureClass,
+    p_failure_reason: failureReason,
+  });
+}

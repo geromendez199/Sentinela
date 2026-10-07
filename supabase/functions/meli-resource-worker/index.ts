@@ -3,7 +3,7 @@ import { MeliClient } from '../_shared/meli-client.ts';
 import { AccountRestrictedError, ReconnectRequiredError, RetryableError } from '../_shared/errors.ts';
 import { requireInternalInvocation } from '../_shared/internal-auth.ts';
 import { log } from '../_shared/logging.ts';
-import { deleteMessage, readBatch, requeue, send } from '../_shared/queue.ts';
+import { deadLetter, deleteMessage, readBatch, requeue, sendOnce } from '../_shared/queue.ts';
 import { sanitizeText } from '../_shared/pii.ts';
 
 /**
@@ -62,7 +62,7 @@ async function handleOrder(client: MeliClient, message: EventMessage, orderId: s
   });
   if (error) throw new RetryableError(`upsert_order_failed:${error.code ?? 'unknown'}`);
 
-  await send('derived_jobs', {
+  await sendOnce('derived_jobs', `${message.event_key}:risk_score:order:${orderId}`, {
     job: 'risk_score',
     org_id: message.org_id,
     meli_account_id: message.meli_account_id,
@@ -94,7 +94,7 @@ async function handleShipment(client: MeliClient, message: EventMessage, shipmen
   });
   if (error) throw new RetryableError(`upsert_shipment_failed:${error.code ?? 'unknown'}`);
 
-  await send('derived_jobs', {
+  await sendOnce('derived_jobs', `${message.event_key}:risk_score:shipment:${shipmentId}`, {
     job: 'risk_score',
     org_id: message.org_id,
     meli_account_id: message.meli_account_id,
@@ -126,7 +126,7 @@ async function handleClaim(client: MeliClient, message: EventMessage, claimId: s
   });
   if (error) throw new RetryableError(`upsert_claim_failed:${error.code ?? 'unknown'}`);
 
-  await send('derived_jobs', {
+  await sendOnce('derived_jobs', `${message.event_key}:reputation_reconcile`, {
     job: 'reputation_reconcile',
     org_id: message.org_id,
     meli_account_id: message.meli_account_id,
@@ -172,7 +172,7 @@ async function handleMessages(client: MeliClient, message: EventMessage, packId:
   if (error) throw new RetryableError(`upsert_messages_failed:${error.code ?? 'unknown'}`);
 
   if (sanitized.length > 0) {
-    await send('derived_jobs', {
+    await sendOnce('derived_jobs', `${message.event_key}:classify_text:${packId}`, {
       job: 'classify_text',
       org_id: message.org_id,
       meli_account_id: message.meli_account_id,
@@ -247,6 +247,7 @@ Deno.serve(async (request) => {
   const messages = await readBatch<EventMessage>(QUEUE, 60, batchSize);
   let processed = 0;
   let requeued = 0;
+  let deadLettered = 0;
 
   for (const entry of messages) {
     try {
@@ -255,6 +256,23 @@ Deno.serve(async (request) => {
       await deleteMessage(QUEUE, entry.msg_id);
       processed += 1;
     } catch (error) {
+      const failureClass = error instanceof Error ? error.constructor.name : 'UnknownError';
+      const failureReason = error instanceof Error ? error.message : 'unknown_worker_error';
+
+      if (entry.read_ct >= 3) {
+        await deadLetter(QUEUE, entry, failureClass, failureReason);
+        await markProcessed(entry.message.event_id, 'failed', failureReason);
+        log('error', 'resource_worker_dead_lettered', {
+          topic: entry.message.topic,
+          meli_account_id: entry.message.meli_account_id,
+          event_key: entry.message.event_key,
+          attempts: entry.read_ct,
+          failure_class: failureClass,
+        });
+        deadLettered += 1;
+        continue;
+      }
+
       if (error instanceof RetryableError) {
         const delay = Math.ceil((error.retryAfterMs ?? 5_000 * entry.read_ct) / 1000);
         await requeue(QUEUE, entry.msg_id, Math.min(900, Math.max(5, delay)));
@@ -262,26 +280,21 @@ Deno.serve(async (request) => {
         continue;
       }
       if (error instanceof ReconnectRequiredError || error instanceof AccountRestrictedError) {
-        await markProcessed(entry.message.event_id, 'failed', error.message);
-        await deleteMessage(QUEUE, entry.msg_id);
+        await requeue(QUEUE, entry.msg_id, 60 * entry.read_ct);
+        requeued += 1;
         continue;
       }
       log('error', 'resource_worker_failed', {
         topic: entry.message.topic,
         meli_account_id: entry.message.meli_account_id,
-        error: String(error),
+        failure_class: failureClass,
       });
-      if (entry.read_ct >= 5) {
-        await markProcessed(entry.message.event_id, 'failed', String(error));
-        await deleteMessage(QUEUE, entry.msg_id);
-      } else {
-        await requeue(QUEUE, entry.msg_id, 30 * entry.read_ct);
-        requeued += 1;
-      }
+      await requeue(QUEUE, entry.msg_id, 30 * entry.read_ct);
+      requeued += 1;
     }
   }
 
-  return new Response(JSON.stringify({ read: messages.length, processed, requeued }), {
+  return new Response(JSON.stringify({ read: messages.length, processed, requeued, dead_lettered: deadLettered }), {
     headers: { 'Content-Type': 'application/json' },
   });
 });
