@@ -6,6 +6,8 @@ import { IncidentExpiryTimeline, type ExpiryEntry } from '@/components/reputatio
 import { TwinFidelityBadge } from '@/components/reputation/twin-fidelity-badge';
 import { formatDateTime, formatRate } from '@/lib/utils/format';
 import type { MetricHeadroom } from '@/lib/reputation/types';
+import { calculateAccountHealth } from '@/lib/reputation/account-health';
+import { AccountHealthCard } from '@/components/reputation/account-health-card';
 
 export default async function ReputationPage({ params }: { params: Promise<{ orgSlug: string }> }) {
   const { orgSlug } = await params;
@@ -40,6 +42,17 @@ export default async function ReputationPage({ params }: { params: Promise<{ org
   const official = snapshots.data?.[0];
   const twin = computations.data?.[0];
   const headroom = (twin?.headroom as { metrics?: MetricHeadroom[] } | null)?.metrics ?? [];
+  const health = official ? calculateAccountHealth({
+    orders: official.sales_completed ?? 0,
+    claimsAffectingReputation: official.claims_value ?? 0,
+    mediations: 0,
+    lateShipments: official.delay_value ?? 0,
+    shippedOrders: 0,
+    sellerCancellations: official.cancellations_value ?? 0,
+    trackedShipments: 0,
+    scannedOnTime: 0,
+    headroom,
+  }) : calculateAccountHealth({ orders: 0, claimsAffectingReputation: 0, mediations: 0, lateShipments: 0, shippedOrders: 0, sellerCancellations: 0, trackedShipments: 0, scannedOnTime: 0 });
 
   const expiries: ExpiryEntry[] = (incidents.data ?? [])
     .filter((row): row is typeof row & { projected_expiry_at: string } => row.projected_expiry_at !== null)
@@ -117,6 +130,8 @@ export default async function ReputationPage({ params }: { params: Promise<{ org
           )}
         </Card>
       </div>
+
+      <AccountHealthCard health={health} />
 
       <section>
         <h2 className="mb-3 text-sm font-semibold">Margen de seguridad por metrica</h2>
