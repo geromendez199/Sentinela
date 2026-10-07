@@ -49,7 +49,7 @@ create index dead_letter_events_unresolved_idx
 alter table public.dead_letter_events enable row level security;
 create policy dead_letter_events_admin_read on public.dead_letter_events
   for select to authenticated
-  using (public.is_org_member(org_id, array['admin']::public.org_role[]));
+  using (public.org_role_for(org_id) in ('owner'::public.org_role, 'admin'::public.org_role));
 revoke all on public.dead_letter_events from public, anon, authenticated;
 grant select on public.dead_letter_events to authenticated;
 grant select, insert, update on public.dead_letter_events to service_role;
