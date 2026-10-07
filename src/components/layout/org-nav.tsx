@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { usePathname } from 'next/navigation';
 
 export const SECTIONS = [
@@ -31,7 +31,7 @@ export function PageHeading({ orgSlug }: { orgSlug: string }) {
     <div className="mb-7 flex flex-wrap items-end justify-between gap-4">
       <div>
         <p className="page-eyebrow mb-2">Tu operación, en perspectiva</p>
-        <div className="flex items-center gap-2 text-xs text-neutral-500"><Link href={`/${orgSlug}/overview`} className="hover:text-black">Inicio</Link>{section && <><span aria-hidden="true">/</span><span className="text-neutral-700">{section.label}</span></>}{isDetail && <><span aria-hidden="true">/</span><span>Detalle</span></>}</div>
+        <nav aria-label="Ruta actual" className="flex items-center gap-2 text-xs text-neutral-500"><Link href={`/${orgSlug}/overview`} className="hover:text-black">Inicio</Link>{section && <><span aria-hidden="true">/</span>{isDetail ? <Link className="hover:text-black" href={`/${orgSlug}/${section.href}`}>{section.label}</Link> : <span aria-current="page" className="text-neutral-700">{section.label}</span>}</>}{isDetail && <><span aria-hidden="true">/</span><span aria-current="page">Detalle</span></>}</nav>
         <h1 className="mt-2 text-3xl font-semibold tracking-tight">{section?.label ?? 'Tu organización'}</h1>
         <p className="muted mt-2 max-w-2xl text-sm leading-relaxed">{section?.description}</p>
       </div>
@@ -42,23 +42,34 @@ export function PageHeading({ orgSlug }: { orgSlug: string }) {
 
 export function OrgNav({ orgSlug }: { orgSlug: string }) {
   const active = currentSection(usePathname(), orgSlug)?.href;
+  const [expanded, setExpanded] = useState(false);
+  const menuButton = useRef<HTMLButtonElement>(null);
   const navRef = useRef<HTMLElement>(null);
+  useEffect(() => {
+    if (!expanded) return;
+    const close = (event: KeyboardEvent) => { if (event.key === 'Escape') { setExpanded(false); menuButton.current?.focus(); } };
+    window.addEventListener('keydown', close);
+    return () => window.removeEventListener('keydown', close);
+  }, [expanded]);
   useEffect(() => {
     if (window.matchMedia('(max-width: 1023px)').matches) {
       navRef.current?.querySelector('[aria-current="page"]')?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
     }
   }, [active]);
   return (
-    <nav ref={navRef} aria-label="Navegación de la organización" className="flex gap-1 overflow-x-auto border-b bg-white px-3 py-3 lg:block lg:space-y-1 lg:overflow-visible lg:border-0 lg:bg-transparent lg:px-4 lg:py-2">
+    <>
+    <button ref={menuButton} type="button" aria-expanded={expanded} aria-controls="organization-navigation" onClick={() => setExpanded(!expanded)} className="flex h-12 w-full items-center justify-between border-b bg-white px-5 text-sm font-medium lg:hidden"><span><span className="font-bold">sentinela</span><span className="muted ml-2 text-xs">/ {SECTIONS.find((section) => section.href === active)?.label ?? 'Navegación'}</span></span><span>{expanded ? 'Cerrar ×' : 'Menú ☰'}</span></button>
+    <nav id="organization-navigation" ref={navRef} aria-label="Navegación de la organización" className={`${expanded ? 'grid grid-cols-2' : 'hidden'} gap-1 border-b bg-white px-3 py-3 lg:block lg:space-y-1 lg:overflow-visible lg:border-0 lg:bg-transparent lg:px-4 lg:py-2`}>
       {SECTIONS.map((section) => (
         <div key={section.href} className="shrink-0">
           {section.group && <p className="mb-3 mt-6 hidden px-3 text-[9px] font-semibold tracking-[.15em] text-neutral-500 lg:block">{section.group}</p>}
-          <Link aria-current={active === section.href ? 'page' : undefined} className={`flex items-center gap-3 whitespace-nowrap rounded-lg px-3 py-2.5 text-[13px] font-medium ${active === section.href ? 'bg-black text-white lg:bg-white lg:text-black' : 'text-neutral-600 hover:bg-neutral-100 hover:text-black lg:text-neutral-400 lg:hover:bg-neutral-900 lg:hover:text-white'}`} href={`/${orgSlug}/${section.href}`}>
+          <Link onClick={() => setExpanded(false)} aria-current={active === section.href ? 'page' : undefined} className={`flex min-h-11 items-center gap-3 rounded-lg px-3 py-2.5 text-[13px] font-medium ${active === section.href ? 'bg-black text-white lg:bg-white lg:text-black' : 'text-neutral-600 hover:bg-neutral-100 hover:text-black lg:text-neutral-400 lg:hover:bg-neutral-900 lg:hover:text-white'}`} href={`/${orgSlug}/${section.href}`}>
             <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d={section.icon} /></svg>
             {section.label}
           </Link>
         </div>
       ))}
     </nav>
+    </>
   );
 }

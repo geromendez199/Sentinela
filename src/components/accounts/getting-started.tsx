@@ -1,0 +1,10 @@
+import Link from 'next/link';
+
+export function GettingStarted({ orgSlug, connected, syncing, ready }: { orgSlug: string; connected: boolean; syncing: boolean; ready: boolean }) {
+  const steps = [
+    { title: 'Conectá tu cuenta', description: 'Autorizá Mercado Libre de forma segura.', href: 'accounts', complete: connected, action: connected ? 'Revisar conexión' : 'Conectar cuenta' },
+    { title: 'Traé tu historial', description: syncing ? 'La carga está en curso. Los indicadores son parciales.' : ready ? 'Ya hay indicadores para revisar.' : 'Después de conectar, seguimos el avance de la carga.', href: 'accounts', complete: connected && ready && !syncing, action: 'Ver sincronización' },
+    { title: 'Elegí tu prioridad', description: 'Revisá riesgo, reclamos y propuestas antes de intervenir.', href: 'risk', complete: false, action: 'Revisar prioridades' },
+  ];
+  return <section className="card p-5 sm:p-6" aria-labelledby="getting-started-title"><div className="flex flex-wrap items-center justify-between gap-3"><h2 id="getting-started-title" className="text-sm font-semibold">Tus primeros pasos en Sentinela</h2><span className="muted text-xs">{steps.filter(step => step.complete).length} de 2 preparativos completos</span></div><ol className="mt-5 grid gap-4 md:grid-cols-3">{steps.map((step, index) => <li key={step.title} className="rounded-xl border p-4"><div className="flex items-center gap-3"><span aria-label={step.complete ? 'Completado' : 'Paso ' + (index + 1)} className={'flex size-7 shrink-0 items-center justify-center rounded-full text-xs font-semibold ' + (step.complete ? 'bg-black text-white' : 'border bg-neutral-50')}>{step.complete ? '✓' : index + 1}</span><h3 className="text-sm font-medium">{step.title}</h3></div><p className="muted mt-3 min-h-10 text-xs leading-relaxed">{step.description}</p><Link href={'/' + orgSlug + '/' + step.href} className="mt-3 inline-flex min-h-10 items-center text-xs font-medium underline underline-offset-4">{step.action} →</Link></li>)}</ol></section>;
+}

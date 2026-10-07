@@ -2,9 +2,11 @@
 
 import { useState } from 'react';
 import { SUPPORTED_SITES } from '@/lib/meli/site-config';
+import { useToast } from '@/components/ui/toast-provider';
 
 /** Starts the OAuth linking flow. The state and PKCE verifier stay server-side. */
 export function ConnectAccountButton({ orgSlug }: { orgSlug: string }) {
+  const notify = useToast();
   const [siteId, setSiteId] = useState<string>('MLA');
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
@@ -21,7 +23,9 @@ export function ConnectAccountButton({ orgSlug }: { orgSlug: string }) {
     });
 
     if (!response.ok) {
-      setError('No pudimos iniciar la vinculacion.');
+      const message = response.status === 403 ? 'Tu rol no permite vincular cuentas. Pedile acceso al administrador.' : 'No pudimos iniciar la vinculación. Reintentá; si persiste, revisá Integraciones.';
+      setError(message);
+      notify(message, 'error');
       setPending(false);
       return;
     }
@@ -31,6 +35,7 @@ export function ConnectAccountButton({ orgSlug }: { orgSlug: string }) {
     } catch {
       setError('No pudimos conectar con el servicio. Intentá nuevamente.');
       setPending(false);
+      notify('No pudimos conectar con el servicio. Intentá nuevamente.', 'error');
     }
   }
 
@@ -57,9 +62,9 @@ export function ConnectAccountButton({ orgSlug }: { orgSlug: string }) {
         disabled={pending}
         className="rounded-lg bg-black px-5 py-3 text-sm font-medium text-white hover:bg-neutral-800 disabled:opacity-50"
       >
-        Vincular cuenta MercadoLibre
+        {pending ? 'Abriendo Mercado Libre…' : 'Vincular cuenta Mercado Libre'}
       </button>
-      {error && <span className="text-sm text-red-600">{error}</span>}
+      {error && <span role="alert" className="w-full text-sm text-neutral-800">{error}</span>}
     </div>
   );
 }

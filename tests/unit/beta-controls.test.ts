@@ -8,8 +8,9 @@ describe('safe session redirects', () => {
  it('preserves an internal return path', () => expect(safeRedirectPath('/team/orders?page=2')).toBe('/team/orders?page=2'));
 });
 describe('data list input', () => {
- it('bounds pages, query length and status', () => expect(listQuery({page:'Infinity', q:' x'.repeat(150), status:'closed'},['open'])).toEqual({page:1,q:' x'.repeat(150).trim().slice(0,120),status:''}));
- it('accepts valid pagination and status', () => expect(listQuery({page:'3',status:'open'},['open'])).toEqual({page:3,status:'open',q:''}));
+ it('bounds pages, query length and status', () => expect(listQuery({page:'Infinity', q:' x'.repeat(150), status:'closed'},['open'])).toEqual({page:1,q:' x'.repeat(150).trim().slice(0,120),status:'',sort:'newest',severity:''}));
+ it('accepts valid pagination and status', () => expect(listQuery({page:'3',status:'open'},['open'])).toEqual({page:3,status:'open',q:'',sort:'newest',severity:''}));
+ it('allows only page-specific sorts and valid severity', () => expect(listQuery({sort:'drop table',severity:'critical'},[],['deadline','newest'])).toMatchObject({sort:'deadline',severity:'critical'}));
  it.each(['1.5','-1','1e3','9007199254740993','1),status.eq.open'])('rejects invalid numeric IDs: %s', value=>expect(numericSearch(value)).toBe(-1));
  it('accepts an exact numeric ID',()=>expect(numericSearch('123456789')).toBe(123456789));
  it('treats search wildcards literally',()=>expect(literalSearch('50%_\\')).toBe('50\\%\\_\\\\'));

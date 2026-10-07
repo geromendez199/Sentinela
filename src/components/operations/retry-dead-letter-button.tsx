@@ -2,9 +2,11 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { useToast } from '@/components/ui/toast-provider';
 
 export function RetryDeadLetterButton({ orgSlug, id }: { orgSlug: string; id: number }) {
   const router = useRouter();
+  const notify = useToast();
   const [pending, setPending] = useState(false);
   const [message, setMessage] = useState('');
 
@@ -18,9 +20,11 @@ export function RetryDeadLetterButton({ orgSlug, id }: { orgSlug: string; id: nu
         body: JSON.stringify({ orgSlug }),
       });
       if (!response.ok) throw new Error('retry_failed');
+      notify('Trabajo reenviado. Podés seguir su estado desde Operaciones.');
       router.refresh();
     } catch {
       setMessage('No se pudo reencolar. Intentá nuevamente.');
+      notify('No se pudo reenviar el trabajo. Reintentá después de revisar el motivo.', 'error');
     } finally {
       setPending(false);
     }

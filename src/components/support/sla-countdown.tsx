@@ -4,9 +4,10 @@ import { useEffect, useState } from 'react';
 import { getSlaStatus } from '@/lib/support/sla';
 
 export function SlaCountdown({ dueAt }: { dueAt: string | null }) {
-  const [now, setNow] = useState(() => new Date());
-  useEffect(() => { const timer = window.setInterval(() => setNow(new Date()), 30_000); return () => window.clearInterval(timer); }, []);
+  const [now, setNow] = useState<Date | null>(null);
+  useEffect(() => { setNow(new Date()); const timer = window.setInterval(() => setNow(new Date()), 30_000); return () => window.clearInterval(timer); }, []);
+  if (!now) return <span className="muted mt-1 inline-flex text-xs">Consultando plazo…</span>;
   const status = getSlaStatus(dueAt, now);
-  const color = status.state === 'overdue' ? 'text-red-700' : status.state === 'urgent' ? 'text-orange-700' : 'text-neutral-700';
-  return <span className={`font-medium ${color}`} role="status" aria-label={`SLA: ${status.label}`}>{status.label}</span>;
+  const urgent = status.state === 'overdue' || status.state === 'urgent';
+  return <span className={`mt-1 inline-flex rounded-md px-2 py-1 text-xs font-medium ${urgent ? 'bg-black text-white' : 'bg-neutral-100 text-neutral-700'}`} aria-label={`SLA: ${status.label}`}>{urgent && <span aria-hidden="true" className="mr-1">!</span>}{status.label}</span>;
 }

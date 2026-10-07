@@ -6,6 +6,10 @@ import { Card, EmptyState } from '@/components/ui/card';
 import { TwinFidelityBadge } from '@/components/reputation/twin-fidelity-badge';
 import { RiskQueue } from '@/components/risk/risk-queue';
 import { formatCount, formatDateTime, formatRate } from '@/lib/utils/format';
+import { GettingStarted } from '@/components/accounts/getting-started';
+import { SyncAutoRefresh } from '@/components/accounts/sync-auto-refresh';
+import { statusLabel } from '@/lib/ui/labels';
+import { OfficialLevel } from '@/components/reputation/official-level';
 
 export default async function OverviewPage({ params }: { params: Promise<{ orgSlug: string }> }) {
   const { orgSlug } = await params;
@@ -28,10 +32,10 @@ export default async function OverviewPage({ params }: { params: Promise<{ orgSl
       .in('risk_band', ['high', 'critical'])
       .order('computed_at', { ascending: false })
       .limit(15),
-    supabase.from('alerts').select('*').eq('org_id', ctx.orgId).eq('status', 'open').limit(10),
+    supabase.from('alerts').select('*', { count: 'exact' }).eq('org_id', ctx.orgId).eq('status', 'open').order('created_at', { ascending: false }).limit(10),
     supabase
       .from('action_drafts')
-      .select('id, kind, status, created_at')
+      .select('id, kind, status, created_at', { count: 'exact' })
       .eq('org_id', ctx.orgId)
       .in('status', ['draft', 'pending_approval'])
       .limit(10),
@@ -47,7 +51,10 @@ export default async function OverviewPage({ params }: { params: Promise<{ orgSl
 
   return (
     <div className="space-y-6">
-      <div className="flex justify-end"><RefreshButton /></div>
+      <div className="flex flex-wrap items-center justify-between gap-3"><p className="muted text-xs">{accountRows.length ? 'Tu operación, con los últimos datos disponibles.' : 'Conectá tu primera cuenta para empezar.'}</p><RefreshButton /></div>
+      {(!accountRows.some(account => account.status === 'active') || backfilling.length > 0) && <GettingStarted orgSlug={orgSlug} connected={accountRows.some(account => account.status !== 'disconnected')} syncing={backfilling.length > 0} ready={Boolean(reputation.data?.length || computations.data?.length)} />}
+      <SyncAutoRefresh active={backfilling.length > 0} />
+      <section className="card card-dark p-5 sm:p-6" aria-labelledby="today-priorities"><div className="flex flex-wrap items-start justify-between gap-3"><div><p className="text-[10px] font-semibold uppercase tracking-widest text-neutral-400">Tu próxima decisión</p><h2 id="today-priorities" className="mt-2 text-xl font-semibold">Lo que necesita tu atención</h2><p className="mt-2 text-xs text-neutral-300">Empezá por las señales urgentes y revisá las propuestas antes de ejecutarlas.</p></div><Link href={`/${orgSlug}/claims?status=opened&sort=deadline`} className="inline-flex min-h-10 items-center rounded-lg border border-neutral-600 px-3 text-xs hover:bg-neutral-800">Reclamos por vencimiento →</Link></div><div className="mt-5 grid gap-3 sm:grid-cols-3">{[{ label: 'Evaluaciones de riesgo alto', count: risk.count ?? 0, href: 'risk' }, { label: 'Alertas sin leer', count: alerts.count ?? 0, href: 'alerts?status=open' }, { label: 'Propuestas por revisar', count: actions.count ?? 0, href: 'actions' }].map(item => <Link key={item.href} href={`/${orgSlug}/${item.href}`} className="rounded-xl border border-neutral-700 p-4 hover:bg-neutral-800"><p className="text-3xl font-semibold tabular-nums">{formatCount(item.count)}</p><p className="mt-2 text-xs text-neutral-300">{item.label} <span aria-hidden="true">↗</span></p></Link>)}</div></section>
       {/* Confidence banner: the UI states when data is incomplete (DoD global). */}
       {(backfilling.length > 0 || needsReconnect.length > 0) && (
         <div className="card border-neutral-200 bg-white p-4 text-sm leading-relaxed text-neutral-700">
@@ -100,19 +107,19 @@ export default async function OverviewPage({ params }: { params: Promise<{ orgSl
               </p>
             </>
           ) : (
-            <EmptyState message="Todavia sin calculo del gemelo." />
+            <EmptyState message="El cálculo se genera con los datos sincronizados." action={<Link href={`/${orgSlug}/accounts`} className="text-xs font-medium underline">Ver sincronización →</Link>} />
           )}
         </Card>
       </div>
 
       <Card title="Reputacion oficial observada" subtitle="Última información recibida de Mercado Libre.">
         {(reputation.data ?? []).length === 0 ? (
-          <EmptyState message="Sin snapshots oficiales todavia." />
+          <EmptyState message="La reputación oficial aparecerá al completar la primera lectura de Mercado Libre." action={<Link href={`/${orgSlug}/accounts`} className="text-xs font-medium underline">Revisar cuentas →</Link>} />
         ) : (
           <ul className="space-y-2 text-sm">
             {(reputation.data ?? []).map((row) => (
               <li key={row.meli_account_id} className="flex flex-wrap justify-between gap-2">
-                <span>{row.level_id ?? 'sin nivel'} · {row.power_seller_status ?? 'sin medalla'}</span>
+                <span><OfficialLevel level={row.level_id} /> · {row.power_seller_status ?? 'Sin medalla'}</span>
                 <span className="muted">
                   reclamos {formatRate(row.claims_rate)} · cancelaciones {formatRate(row.cancellations_rate)} ·
                   demoras {formatRate(row.delay_rate)}
@@ -128,19 +135,20 @@ export default async function OverviewPage({ params }: { params: Promise<{ orgSl
       </Card>
 
       <div className="grid gap-4 md:grid-cols-2">
-        <Card title="Alertas abiertas">
+        <Card title="Alertas abiertas" subtitle="Seguimiento de los avisos que necesitan atención.">
           {(alerts.data ?? []).length === 0 ? (
             <EmptyState message="Sin alertas abiertas." />
           ) : (
             <ul className="space-y-2 text-sm">
               {(alerts.data ?? []).map((alert) => (
-                <li key={alert.id}>
+                <li key={alert.id} className="rounded-lg border p-3">
                   <span className="font-medium">{alert.title}</span>
-                  <span className="muted"> · {alert.severity}</span>
+                  <span className="muted"> · {statusLabel(alert.severity)}</span>
                 </li>
               ))}
             </ul>
           )}
+          <Link href={`/${orgSlug}/alerts?status=open`} className="mt-4 inline-flex min-h-10 items-center text-xs font-medium underline">Abrir centro de alertas →</Link>
         </Card>
         <Card title="Acciones esperando aprobacion">
           {(actions.data ?? []).length === 0 ? (
@@ -155,6 +163,7 @@ export default async function OverviewPage({ params }: { params: Promise<{ orgSl
               ))}
             </ul>
           )}
+          <Link href={`/${orgSlug}/actions`} className="mt-4 inline-flex min-h-10 items-center text-xs font-medium underline">Revisar acciones →</Link>
         </Card>
       </div>
     </div>

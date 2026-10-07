@@ -10,13 +10,13 @@ import { hasPermission } from '@/lib/auth/permissions';
 const STATUS_LABELS: Record<string, string> = { onboarding: 'Preparando conexión', backfilling: 'Cargando historial', active: 'Activa', degraded: 'Requiere revisión', reconnect_required: 'Reconexión pendiente', restricted: 'Restringida', disconnected: 'Desconectada' };
 
 const STATUS_HELP: Record<string, string> = {
-  onboarding: 'OAuth completado, sin bootstrap. No se muestra score definitivo.',
-  backfilling: 'Carga historica en progreso; confianza parcial.',
-  active: 'Token valido y sincronizacion saludable.',
-  degraded: 'Errores transitorios, drift alto o datos incompletos.',
-  reconnect_required: 'invalid_grant o permiso revocado: hace falta nueva autorizacion.',
-  restricted: 'Restriccion o suspension observada: writes bloqueados.',
-  disconnected: 'Vinculo removido; los datos siguen la politica de retencion.',
+  onboarding: 'Cuenta autorizada. Estamos preparando la primera carga.',
+  backfilling: 'Importando el historial. Los indicadores todavía son parciales.',
+  active: 'La conexión y la sincronización están operativas.',
+  degraded: 'Hay datos incompletos o errores de sincronización. Revisá el detalle.',
+  reconnect_required: 'Mercado Libre necesita que vuelvas a autorizar el acceso.',
+  restricted: 'Mercado Libre informa una restricción. Las acciones están bloqueadas.',
+  disconnected: 'La sincronización está detenida. Los datos conservados siguen disponibles.',
 };
 
 export default async function AccountsPage({ params }: { params: Promise<{ orgSlug: string }> }) {
@@ -35,7 +35,7 @@ export default async function AccountsPage({ params }: { params: Promise<{ orgSl
       {hasPermission(ctx.role, 'accounts:connect') && <ConnectAccountButton orgSlug={orgSlug} />}
 
       {(data ?? []).length === 0 && (
-        <Card className="overflow-hidden border-black bg-black text-white [&_.muted]:text-neutral-300" title="Empezá por conectar tu operación" subtitle="En menos de dos minutos vas a tener la primera lectura de Sentinela.">
+        <Card className="card-dark overflow-hidden" title="Empezá por conectar tu operación" subtitle="Tus primeras señales aparecen cuando termine la sincronización inicial.">
           <div className="grid gap-5 sm:grid-cols-3">
             {[['01', 'Conectá Mercado Libre', 'Autorizá el acceso de forma segura, sin compartir tu contraseña.'], ['02', 'Esperá la carga inicial', 'Traemos órdenes, reclamos y publicaciones. Los datos se muestran como parciales durante este paso.'], ['03', 'Tomá decisiones', 'Recibí prioridades de riesgo y señales para intervenir antes.']].map(([number, title, description]) => (
               <div key={number} className="border-t border-white/20 pt-3"><span className="text-xs text-neutral-400">{number}</span><h3 className="mt-2 text-sm font-semibold">{title}</h3><p className="mt-2 text-xs leading-relaxed text-neutral-300">{description}</p></div>
