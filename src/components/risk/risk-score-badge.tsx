@@ -1,4 +1,5 @@
 import { classNames } from '@/lib/utils/format';
+import { statusLabel } from '@/lib/ui/labels';
 
 const BAND_STYLES: Record<string, string> = {
   low: 'border border-neutral-200 bg-neutral-50 text-neutral-600',
@@ -14,7 +15,7 @@ export function RiskScoreBadge({ score, band }: { score: number; band: string })
       title="Score de riesgo heuristico, no calibrado estadisticamente."
       className={classNames('inline-block rounded-full px-3 py-1 text-xs font-semibold', BAND_STYLES[band] ?? '')}
     >
-      {band} · {(score * 100).toFixed(0)}
+      {statusLabel(band)} · {(Math.max(0, Math.min(1, score)) * 100).toFixed(0)} / 100
     </span>
   );
 }

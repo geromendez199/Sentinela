@@ -28,7 +28,7 @@
   --muted: #62626c;
 }
 
-* { border-color: var(--border); }
+@layer base { * { border-color: var(--border); } }
 body {
   margin: 0;
   background: var(--background);
@@ -43,20 +43,34 @@ button:not(:disabled), select { cursor: pointer; }
 :focus-visible { outline: 2px solid #18181b; outline-offset: 4px; }
 input, select, textarea { background: #fff; color: #18181b; }
 input:not([type="checkbox"]):not([type="radio"]), select, textarea { min-height: 40px; border-radius: 8px; }
-button:disabled { cursor: wait; }
+button:disabled { cursor: not-allowed; }
+input[type="checkbox"] { accent-color: #18181b; }
+html { scroll-padding-top: 100px; }
+@media (max-width: 1023px) { html { scroll-padding-top: 160px; } }
+table th { white-space: nowrap; }
+table td { vertical-align: middle; font-variant-numeric: tabular-nums; }
+.dashboard-content { min-width: 0; }
+.dashboard-content > * { min-width: 0; }
+dialog { max-height: calc(100dvh - 32px); overflow-y: auto; }
 .card {
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 16px;
   box-shadow: 0 2px 4px rgb(0 0 0 / .015);
 }
+.card.card-dark { background: #18181b; border-color: #18181b; color: #fff; }
+.card.card-dark .muted { color: #d4d4d8; }
+.card.card-dark .page-eyebrow { color: #a1a1aa; }
+.card-dark :focus-visible, aside :focus-visible { outline-color: #a1a1aa; }
 a.card:hover { border-color: #a1a1aa; box-shadow: 0 4px 16px rgb(0 0 0 / .04); }
 .muted { color: var(--muted); }
 .page-eyebrow { font-size: 10px; font-weight: 600; letter-spacing: .16em; text-transform: uppercase; color: #71717a; }
 .dashboard-content { max-width: 1440px; margin: 0 auto; padding: 24px 20px 48px; }
 .metric-number { font-size: 42px; font-weight: 600; line-height: 1.2; letter-spacing: -.055em; font-variant-numeric: tabular-nums; }
+.skeleton { background: linear-gradient(100deg, #f1f1f2 30%, #fafafa 45%, #f1f1f2 60%); background-size: 200% 100%; animation: skeleton-shimmer 1.4s ease-in-out infinite; }
+@keyframes skeleton-shimmer { from { background-position: 200% 0; } to { background-position: -200% 0; } }
 @media (min-width: 1024px) { .dashboard-content { padding: 32px 40px 56px; } }
-@media (prefers-reduced-motion: reduce) { *, *::before, *::after { transition: none !important; scroll-behavior: auto !important; } }
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { transition: none !important; animation: none !important; scroll-behavior: auto !important; } }
 
 progress { appearance: none; overflow: hidden; border-radius: 999px; background: #e5e5e5; }
 progress::-webkit-progress-bar { background: #e5e5e5; border-radius: 999px; }

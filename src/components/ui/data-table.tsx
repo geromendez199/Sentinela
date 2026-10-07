@@ -1,10 +1,19 @@
 import { EmptyState } from './card';
 import { SelectableTable } from './selectable-table';
+import { isValidElement, type ReactNode } from 'react';
+
+function nodeText(node: ReactNode): string {
+  if (typeof node === 'string' || typeof node === 'number') return String(node);
+  if (Array.isArray(node)) return node.map(nodeText).join(' ');
+  if (isValidElement<{ children?: ReactNode }>(node)) return nodeText(node.props.children);
+  return '';
+}
 
 export interface Column<Row> {
   key: string;
   header: string;
   render: (row: Row) => React.ReactNode;
+  exportValue?: (row: Row) => string | number;
 }
 
 export function DataTable<Row>({
@@ -13,52 +22,33 @@ export function DataTable<Row>({
   empty,
   rowKey,
   selectableLabel,
+  emptyAction,
+  bulkAcknowledge,
+  selectionScope,
 }: {
   rows: Row[];
   columns: Array<Column<Row>>;
   empty: string;
   rowKey: (row: Row) => string;
   selectableLabel?: string;
+  emptyAction?: React.ReactNode;
+  bulkAcknowledge?: { orgSlug: string };
+  selectionScope?: string;
 }) {
-  if (rows.length === 0) return <EmptyState message={empty} />;
+  if (rows.length === 0) return <EmptyState message={empty} action={emptyAction} />;
 
-  if (selectableLabel) {
-    return (
+  return (
       <SelectableTable
-        label={selectableLabel}
+        key={selectionScope ?? JSON.stringify(rows.map(rowKey))}
+        label={selectableLabel ?? 'resultados'}
+        selectable={Boolean(selectableLabel)}
+        bulkAcknowledge={bulkAcknowledge}
         headers={columns.map((column) => column.header)}
         rows={rows.map((row) => ({
           key: rowKey(row),
           cells: columns.map((column) => column.render(row)),
+          values: columns.map((column) => column.exportValue?.(row) ?? nodeText(column.render(row))),
         }))}
       />
     );
-  }
-
-  return (
-    <div className="overflow-x-auto rounded-xl border">
-      <table className="w-full text-left text-sm">
-        <thead className="bg-neutral-50 text-[10px] uppercase tracking-wider text-neutral-500">
-          <tr>
-            {columns.map((column) => (
-              <th key={column.key} className="px-4 py-3.5 font-semibold">
-                {column.header}
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((row) => (
-            <tr key={rowKey(row)} className="border-t transition-colors hover:bg-neutral-50">
-              {columns.map((column) => (
-                <td key={column.key} className="px-4 py-4">
-                  {column.render(row)}
-                </td>
-              ))}
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  );
 }

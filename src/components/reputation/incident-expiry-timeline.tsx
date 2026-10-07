@@ -15,7 +15,7 @@ export function IncidentExpiryTimeline({ entries }: { entries: ExpiryEntry[] }) 
   return (
     <ol className="space-y-2 text-sm">
       {entries.slice(0, 20).map((entry, index) => (
-        <li key={`${entry.orderId ?? 'na'}-${entry.metric}-${index}`} className="flex justify-between">
+        <li key={`${entry.orderId ?? 'na'}-${entry.metric}-${index}`} className="flex flex-wrap justify-between gap-2 rounded-lg border-l-2 border-neutral-300 bg-neutral-50 p-3">
           <span>
             {entry.metric}
             {entry.orderId ? <span className="muted"> · orden {entry.orderId}</span> : null}

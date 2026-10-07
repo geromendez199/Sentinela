@@ -6,6 +6,7 @@ import { requireOrg } from '@/lib/auth/require-role';
 import { createClient } from '@/lib/supabase/server';
 import { Card } from '@/components/ui/card';
 import { formatDateTime } from '@/lib/utils/format';
+import { statusLabel } from '@/lib/ui/labels';
 
 export default async function AccountDetailPage({
   params,
@@ -36,7 +37,7 @@ export default async function AccountDetailPage({
         <dl className="grid gap-2 text-sm md:grid-cols-2">
           <div className="flex justify-between">
             <dt className="muted">Estado</dt>
-            <dd>{account.data.status}</dd>
+            <dd>{statusLabel(account.data.status)}</dd>
           </div>
           <div className="flex justify-between">
             <dt className="muted">Motivo</dt>
