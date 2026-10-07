@@ -68,6 +68,18 @@ export default async function OverviewPage({ params }: { params: Promise<{ orgSl
         </div>
       )}
 
+      <div className="grid gap-3 sm:grid-cols-3" aria-label="Acciones rápidas">
+        <Link href={`/${orgSlug}/accounts`} className="card group flex items-center justify-between p-4 hover:border-black">
+          <span><span className="page-eyebrow block">Conexiones</span><span className="mt-1 block text-sm font-semibold">Administrar cuentas</span></span><span className="text-lg transition-transform group-hover:translate-x-1" aria-hidden="true">→</span>
+        </Link>
+        <Link href={`/${orgSlug}/risk`} className="card group flex items-center justify-between p-4 hover:border-black">
+          <span><span className="page-eyebrow block">Prioridad</span><span className="mt-1 block text-sm font-semibold">Revisar riesgo</span></span><span className="text-lg transition-transform group-hover:translate-x-1" aria-hidden="true">→</span>
+        </Link>
+        <Link href={`/${orgSlug}/claims`} className="card group flex items-center justify-between p-4 hover:border-black">
+          <span><span className="page-eyebrow block">Atención</span><span className="mt-1 block text-sm font-semibold">Ver reclamos</span></span><span className="text-lg transition-transform group-hover:translate-x-1" aria-hidden="true">→</span>
+        </Link>
+      </div>
+
       <div className="grid gap-4 md:grid-cols-3">
         <Card title="Cuentas vinculadas">
           <p className="metric-number">{formatCount(accountRows.filter(a => a.status !== 'disconnected').length)}</p>
