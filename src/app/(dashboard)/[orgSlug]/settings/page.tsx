@@ -10,6 +10,7 @@ const SECTIONS: Array<{ href: string; label: string; description: string; permis
   { href: 'security', permission: 'org:update', label: 'Seguridad', description: 'Controles de ejecución y conexiones.' },
   { href: 'privacy', permission: 'privacy:manage', label: 'Privacidad', description: 'Conservación de datos y solicitudes de privacidad.' },
   { href: 'audit', permission: 'audit:read', label: 'Auditoria', description: 'Historial de cambios importantes.' },
+  { href: 'operations', permission: 'org:update', label: 'Operaciones', description: 'DLQ, trabajos pendientes y recuperación.' },
 ];
 
 export default async function SettingsPage({ params }: { params: Promise<{ orgSlug: string }> }) {
