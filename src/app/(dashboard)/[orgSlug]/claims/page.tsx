@@ -31,6 +31,7 @@ export default async function ClaimsPage({ params, searchParams }: { params: Pro
     >
       <ListFilters {...filters} statuses={statuses} placeholder="Número de reclamo" />
       <DataTable
+        selectableLabel="reclamos"
         rows={(data ?? []).slice(0, PAGE_SIZE)}
         rowKey={(row) => String(row.claim_id)}
         empty="Sin reclamos sincronizados."

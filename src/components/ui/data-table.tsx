@@ -1,4 +1,5 @@
 import { EmptyState } from './card';
+import { SelectableTable } from './selectable-table';
 
 export interface Column<Row> {
   key: string;
@@ -11,13 +12,28 @@ export function DataTable<Row>({
   columns,
   empty,
   rowKey,
+  selectableLabel,
 }: {
   rows: Row[];
   columns: Array<Column<Row>>;
   empty: string;
   rowKey: (row: Row) => string;
+  selectableLabel?: string;
 }) {
   if (rows.length === 0) return <EmptyState message={empty} />;
+
+  if (selectableLabel) {
+    return (
+      <SelectableTable
+        label={selectableLabel}
+        headers={columns.map((column) => column.header)}
+        rows={rows.map((row) => ({
+          key: rowKey(row),
+          cells: columns.map((column) => column.render(row)),
+        }))}
+      />
+    );
+  }
 
   return (
     <div className="overflow-x-auto rounded-xl border">

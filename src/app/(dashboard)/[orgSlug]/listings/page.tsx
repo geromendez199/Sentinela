@@ -28,6 +28,7 @@ export default async function ListingsPage({ params, searchParams }: { params: P
     <Card title="Publicaciones">
       <ListFilters {...filters} statuses={statuses} placeholder="Título de la publicación" />
       <DataTable
+        selectableLabel="publicaciones"
         rows={(data ?? []).slice(0, PAGE_SIZE)}
         rowKey={(row) => row.item_id}
         empty="Sin publicaciones sincronizadas."
