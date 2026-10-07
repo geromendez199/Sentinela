@@ -38,6 +38,7 @@ export function DataTable<Row>({
   return (
     <div className="overflow-x-auto rounded-xl border">
       <table className="w-full text-left text-sm">
+        <caption className="sr-only">Tabla de resultados</caption>
         <thead className="bg-neutral-50 text-[10px] uppercase tracking-wider text-neutral-500">
           <tr>
             {columns.map((column) => (

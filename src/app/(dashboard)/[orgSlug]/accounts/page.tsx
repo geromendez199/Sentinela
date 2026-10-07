@@ -34,6 +34,16 @@ export default async function AccountsPage({ params }: { params: Promise<{ orgSl
     <div className="space-y-6">
       {hasPermission(ctx.role, 'accounts:connect') && <ConnectAccountButton orgSlug={orgSlug} />}
 
+      {(data ?? []).length === 0 && (
+        <Card className="overflow-hidden border-black bg-black text-white [&_.muted]:text-neutral-300" title="Empezá por conectar tu operación" subtitle="En menos de dos minutos vas a tener la primera lectura de Sentinela.">
+          <div className="grid gap-5 sm:grid-cols-3">
+            {[['01', 'Conectá Mercado Libre', 'Autorizá el acceso de forma segura, sin compartir tu contraseña.'], ['02', 'Esperá la carga inicial', 'Traemos órdenes, reclamos y publicaciones. Los datos se muestran como parciales durante este paso.'], ['03', 'Tomá decisiones', 'Recibí prioridades de riesgo y señales para intervenir antes.']].map(([number, title, description]) => (
+              <div key={number} className="border-t border-white/20 pt-3"><span className="text-xs text-neutral-400">{number}</span><h3 className="mt-2 text-sm font-semibold">{title}</h3><p className="mt-2 text-xs leading-relaxed text-neutral-300">{description}</p></div>
+            ))}
+          </div>
+        </Card>
+      )}
+
       <Card title="Cuentas MercadoLibre">
         <DataTable
           rows={data ?? []}

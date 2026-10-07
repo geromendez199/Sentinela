@@ -8,6 +8,8 @@ import { Card } from '@/components/ui/card';
 import { DataTable } from '@/components/ui/data-table';
 import { formatDateTime } from '@/lib/utils/format';
 
+const SEVERITY_STYLES: Record<string, string> = { critical: 'border-black bg-black text-white', high: 'border-neutral-700 bg-neutral-800 text-white', medium: 'border-neutral-300 bg-neutral-100 text-neutral-800', low: 'border-neutral-200 bg-white text-neutral-600' };
+
 export default async function AlertsPage({ params, searchParams }: { params: Promise<{ orgSlug: string }>; searchParams: Promise<ListParams> }) {
   const { orgSlug } = await params;
   const ctx = await requireOrg(orgSlug);
@@ -33,7 +35,7 @@ export default async function AlertsPage({ params, searchParams }: { params: Pro
         rowKey={(row) => row.id}
         empty="Sin alertas."
         columns={[
-          { key: 'severity', header: 'Severidad', render: (row) => row.severity },
+          { key: 'severity', header: 'Severidad', render: (row) => <span className={`inline-flex rounded-full border px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide ${SEVERITY_STYLES[row.severity] ?? SEVERITY_STYLES.low}`}>{row.severity}</span> },
           { key: 'title', header: 'Titulo', render: (row) => row.title },
           { key: 'status', header: 'Estado', render: (row) => row.status },
           { key: 'ack', header: 'Gestión', render: (row) => row.status === 'open' && hasPermission(ctx.role, 'alerts:ack') ? <AcknowledgeButton orgSlug={orgSlug} alertId={row.id} /> : '—' },
