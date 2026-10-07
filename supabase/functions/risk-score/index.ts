@@ -1,7 +1,7 @@
 import { adminClient, rpc } from '../_shared/db.ts';
 import { requireInternalInvocation } from '../_shared/internal-auth.ts';
 import { log } from '../_shared/logging.ts';
-import { deleteMessage, readBatch, requeue } from '../_shared/queue.ts';
+import { deadLetter, deleteMessage, readBatch, requeue } from '../_shared/queue.ts';
 import { riskHistoryWindow } from '../_shared/risk-history.ts';
 
 /**
@@ -15,7 +15,7 @@ import { riskHistoryWindow } from '../_shared/risk-history.ts';
  * use only orders created before the order being scored.
  */
 
-const QUEUE = 'derived_jobs';
+const QUEUE = 'risk_jobs';
 const HISTORY_DAYS = 60;
 const CAPACITY_DAYS = 7;
 const HISTORY_SAMPLE_LIMIT = 1000;
@@ -418,7 +418,7 @@ async function scoreJob(job: Job): Promise<void> {
   contributions.sort((a, b) => Math.abs(Number(b.contribution)) - Math.abs(Number(a.contribution)));
   const featureHash = await sha256Hex(JSON.stringify(features));
 
-  await rpc('backend_store_risk_score', {
+  const riskScoreId = await rpc<string>('backend_store_risk_score', {
     p_org_id: job.org_id,
     p_account_id: job.meli_account_id,
     p_order_id: job.order_id ?? null,
@@ -433,6 +433,17 @@ async function scoreJob(job: Job): Promise<void> {
     p_features: contributions,
     p_feature_hash: featureHash,
   });
+
+  if ((band === 'high' || band === 'critical') && job.order_id) {
+    await rpc('backend_raise_risk_alert', {
+      p_org_id: job.org_id,
+      p_account_id: job.meli_account_id,
+      p_order_id: job.order_id,
+      p_band: band,
+      p_probability: score,
+      p_risk_score_id: riskScoreId,
+    });
+  }
 }
 
 Deno.serve(async (request) => {
@@ -443,18 +454,22 @@ Deno.serve(async (request) => {
   const messages = await readBatch<Job>(QUEUE, 60, Math.min(100, body.batch_size ?? 50));
 
   let scored = 0;
+  let deadLettered = 0;
   for (const entry of messages) {
-    if (entry.message.job !== 'risk_score') continue;
     try {
+      if (entry.message.job !== 'risk_score') throw new Error('unexpected_job_kind');
       await scoreJob(entry.message);
       await deleteMessage(QUEUE, entry.msg_id);
       scored += 1;
     } catch (error) {
-      log('warn', 'risk_score_failed', { error: String(error) });
-      if (entry.read_ct >= 5) await deleteMessage(QUEUE, entry.msg_id);
-      else await requeue(QUEUE, entry.msg_id, 30 * entry.read_ct);
+      const failure = error instanceof Error ? error.message : 'unknown_risk_error';
+      log('warn', 'risk_score_failed', { failure_class: error instanceof Error ? error.name : 'UnknownError' });
+      if (entry.read_ct >= 3) {
+        await deadLetter(QUEUE, entry, error instanceof Error ? error.name : 'UnknownError', failure);
+        deadLettered += 1;
+      } else await requeue(QUEUE, entry.msg_id, 30 * entry.read_ct);
     }
   }
 
-  return new Response(JSON.stringify({ scored }), { headers: { 'Content-Type': 'application/json' } });
+  return new Response(JSON.stringify({ scored, dead_lettered: deadLettered }), { headers: { 'Content-Type': 'application/json' } });
 });

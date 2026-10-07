@@ -38,6 +38,7 @@ export interface AiEnv {
 export interface NotificationsEnv {
   notificationsProvider: string;
   notificationsApiKey: string | null;
+  notificationsFromEmail: string | null;
 }
 
 export function loadSupabaseEnv(): SupabaseEnv {
@@ -77,5 +78,6 @@ export function loadNotificationsEnv(): NotificationsEnv {
   return {
     notificationsProvider: Deno.env.get('NOTIFICATIONS_PROVIDER') ?? 'none',
     notificationsApiKey: Deno.env.get('NOTIFICATIONS_API_KEY') ?? null,
+    notificationsFromEmail: Deno.env.get('NOTIFICATIONS_FROM_EMAIL') ?? null,
   };
 }
