@@ -14,9 +14,9 @@ export function DashboardShell({ children, orgSlug, orgName, role }: { children:
         <OrgNav orgSlug={orgSlug} />
         <div className="mt-auto hidden px-7 pb-7 pt-8 text-xs leading-relaxed text-neutral-500 lg:block">Observá. Entendé. Decidí.<br /><span className="text-[10px]">sentinela · beta</span></div>
       </aside>
-      <header className="flex min-h-20 flex-wrap items-center justify-between gap-3 border-b bg-white px-5 lg:px-10">
+      <header className="sticky top-0 z-30 flex min-h-20 flex-wrap items-center justify-between gap-3 border-b bg-white/95 px-5 backdrop-blur lg:px-10">
         <div className="min-w-0"><p className="page-eyebrow mb-1">Espacio de trabajo</p><p className="truncate text-sm font-semibold">{orgName}</p></div>
-        <div className="flex flex-wrap items-center gap-3"><QuickNavigation orgSlug={orgSlug} /><Link href="/" className="text-xs underline">Mis espacios</Link><form action="/auth/signout" method="post"><button className="rounded-lg border px-3 py-2 text-xs">Salir</button></form><span className="muted hidden text-xs sm:inline">{ROLE_LABELS[role] ?? role}</span><span className="flex h-9 w-9 items-center justify-center rounded-full border bg-neutral-50 text-xs font-semibold" aria-label={ROLE_LABELS[role] ?? role}>{orgName.slice(0, 2).toUpperCase()}</span></div>
+        <div className="flex flex-wrap items-center gap-2 sm:gap-3"><QuickNavigation orgSlug={orgSlug} /><Link href="/" className="hidden text-xs underline sm:inline">Mis espacios</Link><form action="/auth/signout" method="post"><button className="rounded-lg border px-3 py-2 text-xs hover:bg-neutral-100">Salir</button></form><span className="muted hidden text-xs sm:inline">{ROLE_LABELS[role] ?? role}</span><span className="flex h-9 w-9 items-center justify-center rounded-full border bg-neutral-50 text-xs font-semibold" aria-label={ROLE_LABELS[role] ?? role}>{orgName.slice(0, 2).toUpperCase()}</span></div>
       </header>
       <main id="main-content" className="dashboard-content"><PageHeading orgSlug={orgSlug} />{children}</main>
     </div>
