@@ -28,6 +28,7 @@ export default async function OrdersPage({ params, searchParams }: { params: Pro
     <Card title="Ordenes" subtitle="Estado actual sincronizado desde la API oficial">
       <ListFilters {...filters} statuses={statuses} placeholder="Número de orden" />
       <DataTable
+        selectableLabel="órdenes"
         rows={(data ?? []).slice(0, PAGE_SIZE)}
         rowKey={(row) => String(row.order_id)}
         empty="Sin ordenes sincronizadas."

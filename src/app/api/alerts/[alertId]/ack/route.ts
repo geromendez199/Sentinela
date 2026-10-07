@@ -22,6 +22,17 @@ export async function POST(request: NextRequest, context: { params: Promise<{ al
     p_actor: permission.ctx.userId,
   } as never);
 
-  if (error) return NextResponse.json({ error: 'alert_not_open' }, { status: 409 });
+  if (error) {
+    const { data: existing } = await supabase
+      .from('alerts')
+      .select('status')
+      .eq('id', alertId)
+      .eq('org_id', permission.ctx.orgId)
+      .maybeSingle();
+    if (existing?.status === 'acknowledged' || existing?.status === 'resolved') {
+      return NextResponse.json({ status: existing.status, replayed: true });
+    }
+    return NextResponse.json({ error: 'alert_not_open' }, { status: 409 });
+  }
   return NextResponse.json({ status: 'acknowledged' });
 }
