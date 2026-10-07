@@ -24,12 +24,15 @@ function currentSection(pathname: string, orgSlug: string) {
 }
 
 export function PageHeading({ orgSlug }: { orgSlug: string }) {
-  const section = currentSection(usePathname(), orgSlug);
+  const pathname = usePathname();
+  const section = currentSection(pathname, orgSlug);
+  const isDetail = Boolean(section && pathname !== `/${orgSlug}/${section.href}`);
   return (
     <div className="mb-7 flex flex-wrap items-end justify-between gap-4">
       <div>
         <p className="page-eyebrow mb-2">Tu operación, en perspectiva</p>
-        <h1 className="text-3xl font-semibold tracking-tight">{section?.label ?? 'Tu organización'}</h1>
+        <div className="flex items-center gap-2 text-xs text-neutral-500"><Link href={`/${orgSlug}/overview`} className="hover:text-black">Inicio</Link>{section && <><span aria-hidden="true">/</span><span className="text-neutral-700">{section.label}</span></>}{isDetail && <><span aria-hidden="true">/</span><span>Detalle</span></>}</div>
+        <h1 className="mt-2 text-3xl font-semibold tracking-tight">{section?.label ?? 'Tu organización'}</h1>
         <p className="muted mt-2 max-w-2xl text-sm leading-relaxed">{section?.description}</p>
       </div>
       <span className="rounded-full border bg-white px-3 py-1.5 text-[11px] font-medium tracking-wide">BETA</span>

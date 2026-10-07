@@ -20,6 +20,10 @@ export function Card({
   );
 }
 
-export function EmptyState({ message }: { message: string }) {
-  return <div className="flex min-h-28 items-center justify-center rounded-xl border border-dashed bg-neutral-50/60 px-5 py-7 text-center"><p className="muted max-w-sm text-sm leading-relaxed">{message}</p></div>;
+export function EmptyState({ message, action }: { message: string; action?: React.ReactNode }) {
+  return <div className="flex min-h-28 flex-col items-center justify-center gap-3 rounded-xl border border-dashed bg-neutral-50/60 px-5 py-7 text-center"><p className="muted max-w-sm text-sm leading-relaxed">{message}</p>{action}</div>;
+}
+
+export function Skeleton({ className = '' }: { className?: string }) {
+  return <span aria-hidden="true" className={`skeleton block rounded-lg ${className}`} />;
 }
