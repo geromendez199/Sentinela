@@ -2,7 +2,7 @@ import { notFound } from 'next/navigation';
 import { requireOrg } from '@/lib/auth/require-role';
 import { createClient } from '@/lib/supabase/server';
 import { Card, EmptyState } from '@/components/ui/card';
-import { formatDateTime } from '@/lib/utils/format';
+import { SlaCountdown } from '@/components/support/sla-countdown';
 
 export default async function ClaimDetailPage({
   params,
@@ -53,7 +53,7 @@ export default async function ClaimDetailPage({
           </div>
           <div className="flex justify-between">
             <dt className="muted">Vence</dt>
-            <dd>{formatDateTime(claim.data.due_date)}</dd>
+            <dd><SlaCountdown dueAt={claim.data.due_date} /></dd>
           </div>
           <div className="flex justify-between">
             <dt className="muted">Acciones disponibles</dt>
