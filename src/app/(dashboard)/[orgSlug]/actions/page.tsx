@@ -14,7 +14,7 @@ export default async function ActionsPage({ params }: { params: Promise<{ orgSlu
     .select('id, kind, status, rendered_text, requires_approval, created_at, error_code')
     .eq('org_id', ctx.orgId)
     .order('created_at', { ascending: false })
-    .limit(50);
+    .limit(50).throwOnError();
 
   const canApprove = hasPermission(ctx.role, 'actions:approve');
 

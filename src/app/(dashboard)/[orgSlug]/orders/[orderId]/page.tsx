@@ -31,6 +31,9 @@ export default async function OrderDetailPage({
     supabase.from('shipments').select('*').eq('org_id', ctx.orgId).limit(1),
     supabase.from('claims').select('*').eq('org_id', ctx.orgId).eq('order_id', numericOrderId),
   ]);
+  for (const result of [order, risk, shipment, claims]) {
+    if (result.error) throw new Error('data_load_failed');
+  }
 
   if (!order.data) notFound();
 

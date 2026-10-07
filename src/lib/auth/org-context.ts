@@ -27,7 +27,7 @@ export const getOrgContext = cache(async (orgSlug: string): Promise<OrgContext |
     .from('organizations')
     .select('id, name, slug')
     .eq('slug', orgSlug)
-    .maybeSingle();
+    .maybeSingle().throwOnError();
   if (!org) return null;
 
   const { data: membership } = await supabase
@@ -35,7 +35,7 @@ export const getOrgContext = cache(async (orgSlug: string): Promise<OrgContext |
     .select('role')
     .eq('org_id', org.id)
     .eq('user_id', user.id)
-    .maybeSingle();
+    .maybeSingle().throwOnError();
   if (!membership) return null;
 
   return {
@@ -52,6 +52,6 @@ export const listUserOrganizations = cache(async () => {
   const { data } = await supabase
     .from('organizations')
     .select('id, name, slug')
-    .order('name', { ascending: true });
+    .order('name', { ascending: true }).throwOnError();
   return data ?? [];
 });

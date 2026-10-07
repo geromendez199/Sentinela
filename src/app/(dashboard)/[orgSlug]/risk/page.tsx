@@ -13,7 +13,7 @@ export default async function RiskPage({ params }: { params: Promise<{ orgSlug: 
     .select('id, order_id, risk_probability, risk_band, computed_at')
     .eq('org_id', ctx.orgId)
     .order('risk_probability', { ascending: false })
-    .limit(100);
+    .limit(100).throwOnError();
 
   return (
     <Card

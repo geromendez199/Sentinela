@@ -12,7 +12,7 @@ export default async function IntegrationsPage({ params }: { params: Promise<{ o
   const { data } = await supabase
     .from('meli_accounts')
     .select('id, nickname, site_id, status')
-    .eq('org_id', ctx.orgId);
+    .eq('org_id', ctx.orgId).throwOnError();
 
   return (
     <div className="space-y-6">

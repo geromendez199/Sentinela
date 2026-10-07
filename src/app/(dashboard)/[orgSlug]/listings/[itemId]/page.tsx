@@ -28,6 +28,9 @@ export default async function ListingDetailPage({
       .eq('item_id', itemId)
       .order('sample_count', { ascending: false }),
   ]);
+  for (const result of [item, suggestions, clusters]) {
+    if (result.error) throw new Error('data_load_failed');
+  }
 
   if (!item.data) notFound();
 

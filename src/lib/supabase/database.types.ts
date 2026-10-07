@@ -2999,6 +2999,14 @@ export type Database = {
         }
         Returns: boolean
       }
+      set_organization_member_role: {
+        Args: { p_org_id: string; p_user_id: string; p_role: Database["public"]["Enums"]["org_role"] }
+        Returns: Database["public"]["Enums"]["org_role"]
+      }
+      remove_organization_member: {
+        Args: { p_org_id: string; p_user_id: string }
+        Returns: boolean
+      }
       create_organization: {
         Args: { p_name: string; p_slug: string }
         Returns: string

@@ -13,7 +13,7 @@ export default async function PlaybooksPage({ params }: { params: Promise<{ orgS
     .from('playbook_rules')
     .select('id, name, enabled, trigger_kind, priority, requires_approval')
     .eq('org_id', ctx.orgId)
-    .order('priority', { ascending: false });
+    .order('priority', { ascending: false }).throwOnError();
 
   return (
     <div className="space-y-6">

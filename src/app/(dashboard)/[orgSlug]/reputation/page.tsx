@@ -33,6 +33,9 @@ export default async function ReputationPage({ params }: { params: Promise<{ org
       .order('projected_expiry_at', { ascending: true })
       .limit(20),
   ]);
+  for (const result of [snapshots, computations, incidents]) {
+    if (result.error) throw new Error('data_load_failed');
+  }
 
   const official = snapshots.data?.[0];
   const twin = computations.data?.[0];

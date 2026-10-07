@@ -28,7 +28,7 @@ export default async function AccountsPage({ params }: { params: Promise<{ orgSl
     .from('meli_accounts')
     .select('*')
     .eq('org_id', ctx.orgId)
-    .order('nickname', { ascending: true });
+    .order('nickname', { ascending: true }).throwOnError();
 
   return (
     <div className="space-y-6">

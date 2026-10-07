@@ -18,6 +18,9 @@ export default async function PrivacyPage({ params }: { params: Promise<{ orgSlu
       .order('received_at', { ascending: false })
       .limit(20),
   ]);
+  for (const result of [policies, requests]) {
+    if (result.error) throw new Error('data_load_failed');
+  }
 
   const configured = new Map((policies.data ?? []).map((policy) => [policy.entity, policy]));
 

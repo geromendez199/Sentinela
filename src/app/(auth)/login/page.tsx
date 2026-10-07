@@ -1,5 +1,7 @@
 'use client';
 
+import Link from 'next/link';
+import { safeRedirectPath } from '@/lib/auth/safe-redirect';
 import { BrandLogo } from '@/components/brand/brand-logo';
 
 import { Suspense, useState } from 'react';
@@ -19,6 +21,7 @@ function LoginForm() {
     setPending(true);
     setError(null);
 
+    try {
     const supabase = createClient();
     const { error: signInError } = await supabase.auth.signInWithPassword({ email, password });
 
@@ -29,8 +32,10 @@ function LoginForm() {
       return;
     }
 
-    router.replace(searchParams.get('next') ?? '/');
+    router.replace(safeRedirectPath(searchParams.get('next')));
     router.refresh();
+    } catch { setError('No pudimos conectar. Intentá nuevamente.'); }
+    finally { setPending(false); }
   }
 
   return (
@@ -38,12 +43,13 @@ function LoginForm() {
       <div className="mb-8"><BrandLogo /></div>
       <h1 className="text-2xl font-semibold tracking-tight">Iniciar sesión</h1>
       <p className="muted mt-2 text-sm leading-relaxed">Volvé a tu espacio de trabajo.</p>
+      {searchParams.get('error') && <p role="alert" className="mt-4 text-sm">El enlace de acceso no es válido o venció. Solicitá uno nuevo.</p>}
       <form className="mt-7 space-y-5" onSubmit={onSubmit}>
         <label className="block text-sm">
           Email
           <input
             className="mt-1 w-full rounded-md border px-3 py-2"
-            type="email"
+            type="email" autoComplete="email"
             required
             value={email}
             onChange={(event) => setEmail(event.target.value)}
@@ -53,7 +59,7 @@ function LoginForm() {
           Contraseña
           <input
             className="mt-1 w-full rounded-md border px-3 py-2"
-            type="password"
+            type="password" autoComplete="current-password"
             required
             value={password}
             onChange={(event) => setPassword(event.target.value)}
@@ -68,6 +74,7 @@ function LoginForm() {
           Entrar
         </button>
       </form>
+      <div className="mt-6 flex justify-between gap-3 text-xs"><Link href="/forgot-password" className="underline">Olvidé mi contraseña</Link><Link href="/signup" className="underline">Crear cuenta</Link></div>
     </main>
   );
 }
