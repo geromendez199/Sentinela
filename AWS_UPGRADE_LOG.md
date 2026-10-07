@@ -40,12 +40,12 @@ Fecha: 2026-10-07
 - `npm run build`: aprobado usando valores públicos de entorno exclusivos para compilación.
 - `git diff --check`: aprobado.
 
-La validación local de migraciones no pudo ejecutarse porque Docker recibió `403 Forbidden` al descargar las imágenes de Supabase desde `public.ecr.aws`. No se aplicaron cambios a la base de producción. Antes de promover las migraciones, se debe ejecutar `supabase db reset`, `supabase test db` y los asesores de seguridad/rendimiento en un entorno con acceso al registro.
+La validación local de migraciones no pudo ejecutarse porque Docker recibió `403 Forbidden` al descargar las imágenes de Supabase desde `public.ecr.aws`. Posteriormente, con la conexión administrativa de Supabase restablecida, las migraciones se aplicaron y verificaron en el proyecto de producción `ukohdtfikkaizykddvhy`. La auditoría confirmó las tablas, colas y funciones; no había mensajes pendientes en DLQ.
 
 ## Promoción
 
-1. Crear un respaldo de la base y validar las dos migraciones nuevas en staging.
-2. Aplicar migraciones en producción durante una ventana observada.
-3. Desplegar las Edge Functions modificadas.
-4. Confirmar métricas de `meli_events`, reintentos y `dead_letter_events`.
-5. Configurar una alerta operativa para toda entrada nueva en la DLQ.
+1. Crear un respaldo de la base y validar migraciones futuras en staging.
+2. Las migraciones de resiliencia, auditoría, refresh recovery y colas ya están aplicadas en producción.
+3. Las Edge Functions modificadas están desplegadas en versiones activas.
+4. Los workers de cron quedaron reactivados; la primera ejecución manual de riesgo respondió HTTP 200.
+5. Configurar Resend y `NOTIFICATIONS_FROM_EMAIL` sólo después de verificar el remitente y los destinatarios.
