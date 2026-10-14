@@ -10,8 +10,11 @@ export const SECTIONS = [
   { href: 'risk', label: 'Riesgo', group: '', icon: 'M3 18l6-6 4 3 8-11 M16 4h5v5', description: 'Detectá señales de riesgo y ordená tus prioridades.' },
   { href: 'orders', label: 'Órdenes', group: '', icon: 'M5 4h14v17H5z M8 9h8 M8 13h8 M8 17h5', description: 'El detalle de tus ventas, en un solo lugar.' },
   { href: 'claims', label: 'Reclamos', group: '', icon: 'M4 4h16v12H9l-5 4z M8 8h8 M8 12h5', description: 'Seguí cada reclamo y su estado actual.' },
+  { href: 'support', label: 'Atención', group: '', icon: 'M4 4h16v12H9l-5 4z M8 8h8 M8 12h5', description: 'Preguntas y mensajes, señales tempranas y borradores revisables.' },
+  { href: 'dispatch', label: 'Despachos', group: '', icon: 'M3 5h11v12H3z M14 9h4l3 4v4h-7 M6 20a2 2 0 110-4 2 2 0 010 4 M18 20a2 2 0 110-4 2 2 0 010 4', description: 'Priorizá los envíos por el plazo de despacho informado.' },
   { href: 'listings', label: 'Publicaciones', group: '', icon: 'M3 7l9-4 9 4v13H3z M3 7l9 4 9-4 M12 11v9', description: 'Tus publicaciones y las señales de cada producto.' },
   { href: 'root-causes', label: 'Causa raíz', group: 'DECISIONES', icon: 'M12 3v6 M5 21v-6h14v6 M12 9v12 M3 21h4 M10 21h4 M17 21h4 M10 3h4', description: 'Explorá patrones para entender qué está pasando.' },
+  { href: 'quality', label: 'Calidad y CX', group: '', icon: 'M12 3l8 4v5c0 5-8 9-8 9s-8-4-8-9V7z M8 12l3 3 5-6', description: 'Diagnóstico de publicaciones y experiencia observada del comprador.' },
   { href: 'playbooks', label: 'Playbooks', group: '', icon: 'M5 3h14v18H5z M9 7h6 M9 11h6 M9 15h4', description: 'Reglas y respuestas para acompañar tu operación.' },
   { href: 'actions', label: 'Acciones', group: '', icon: 'M4 7l2 2 3-4 M12 7h8 M4 17l2 2 3-4 M12 17h8', description: 'Revisá las propuestas antes de tomar una decisión.' },
   { href: 'alerts', label: 'Alertas', group: '', icon: 'M6 9a6 6 0 0112 0v6l2 3H4l2-3z M10 21h4', description: 'Las novedades que necesitan tu atención.' },
@@ -35,7 +38,7 @@ export function PageHeading({ orgSlug }: { orgSlug: string }) {
         <h1 className="mt-2 text-3xl font-semibold tracking-tight">{section?.label ?? 'Tu organización'}</h1>
         <p className="muted mt-2 max-w-2xl text-sm leading-relaxed">{section?.description}</p>
       </div>
-      <span className="rounded-full border bg-white px-3 py-1.5 text-[11px] font-medium tracking-wide">BETA</span>
+      <span className="rounded-full border bg-white px-3 py-1.5 text-[11px] font-medium tracking-wide">V2 · BETA</span>
     </div>
   );
 }
@@ -59,7 +62,7 @@ export function OrgNav({ orgSlug }: { orgSlug: string }) {
   return (
     <>
     <button ref={menuButton} type="button" aria-expanded={expanded} aria-controls="organization-navigation" onClick={() => setExpanded(!expanded)} className="flex h-12 w-full items-center justify-between border-b bg-white px-5 text-sm font-medium lg:hidden"><span><span className="font-bold">sentinela</span><span className="muted ml-2 text-xs">/ {SECTIONS.find((section) => section.href === active)?.label ?? 'Navegación'}</span></span><span>{expanded ? 'Cerrar ×' : 'Menú ☰'}</span></button>
-    <nav id="organization-navigation" ref={navRef} aria-label="Navegación de la organización" className={`${expanded ? 'grid grid-cols-2' : 'hidden'} gap-1 border-b bg-white px-3 py-3 lg:block lg:space-y-1 lg:overflow-visible lg:border-0 lg:bg-transparent lg:px-4 lg:py-2`}>
+    <nav id="organization-navigation" ref={navRef} aria-label="Navegación de la organización" className={`${expanded ? 'grid grid-cols-2' : 'hidden'} max-h-[calc(100dvh-48px)] gap-1 overflow-y-auto border-b bg-white px-3 py-3 lg:block lg:max-h-none lg:space-y-1 lg:overflow-visible lg:border-0 lg:bg-transparent lg:px-4 lg:py-2`}>
       {SECTIONS.map((section) => (
         <div key={section.href} className="shrink-0">
           {section.group && <p className="mb-3 mt-6 hidden px-3 text-[9px] font-semibold tracking-[.15em] text-neutral-500 lg:block">{section.group}</p>}
