@@ -11,6 +11,8 @@ import { AccountHealthCard } from '@/components/reputation/account-health-card';
 import Link from 'next/link';
 import { OfficialLevel } from '@/components/reputation/official-level';
 import type { ListParams } from '@/lib/ui/list-query';
+import { SimulationSandbox } from '@/components/reputation/simulation-sandbox';
+import type { SandboxMetric } from '@/lib/reputation/sandbox';
 
 export default async function ReputationPage({ params, searchParams }: { params: Promise<{ orgSlug: string }>; searchParams: Promise<ListParams> }) {
   const { orgSlug } = await params;
@@ -51,6 +53,11 @@ export default async function ReputationPage({ params, searchParams }: { params:
   const official = snapshots.data?.[0];
   const twin = computations.data?.[0];
   const headroom = (twin?.headroom as { metrics?: MetricHeadroom[] } | null)?.metrics ?? [];
+  const simulationMetrics:SandboxMetric[]=twin?headroom.flatMap(entry=>{
+    const values=entry.metric==='claims'?{value:twin.claims_value,denominator:twin.claims_denominator,label:'Reclamos'}:entry.metric==='cancellations'?{value:twin.cancellations_value,denominator:twin.cancellations_denominator,label:'Cancelaciones'}:{value:twin.delay_value,denominator:twin.delay_denominator,label:'Demoras'};
+    if(values.value===null||values.denominator===null)return [];
+    return [{key:entry.metric,label:values.label,value:values.value,denominator:values.denominator,threshold:entry.threshold,comparator:entry.comparator}];
+  }).filter(metric=>metric.denominator>0):[];
   const health = official ? calculateAccountHealth({
     orders: official.sales_completed ?? 0,
     claimsAffectingReputation: official.claims_value ?? 0,
@@ -142,6 +149,7 @@ export default async function ReputationPage({ params, searchParams }: { params:
       </div>
 
       <AccountHealthCard health={health} />
+      <SimulationSandbox metrics={simulationMetrics} fidelity={twin?.fidelity??'Sin cálculo disponible'}/>
 
       <section>
         <h2 className="mb-3 text-sm font-semibold">Margen de seguridad por metrica</h2>

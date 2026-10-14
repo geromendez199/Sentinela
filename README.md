@@ -1,7 +1,12 @@
-# Sentinela ML
+# Sentinela V2
 
 Motor predictivo de proteccion de reputacion y resolucion proactiva de reclamos
 para vendedores de MercadoLibre.
+
+V2 incorpora una bandeja de atención, borradores revisables con asistencia
+opcional de IA, cola de despachos, diagnóstico de publicaciones y CX observado,
+evidencia y planes de acción para reclamos, comparación de costos de resolución,
+simulación de reputación y preparación operativa. Ver [alcance y activación de V2](docs/sentinela-v2.md).
 
 Sentinela observa la verdad oficial de MercadoLibre, reconstruye el estado
 reputacional de cada cuenta, estima riesgo por venta, propone una intervencion

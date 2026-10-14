@@ -3,7 +3,7 @@ import './globals.css';
 import { ToastProvider } from '@/components/ui/toast-provider';
 
 export const metadata: Metadata = {
-  title: 'Sentinela ML',
+  title: {default:'Sentinela V2',template:'%s · Sentinela V2'},
   description:
     'Motor predictivo de proteccion de reputacion y resolucion proactiva de reclamos para vendedores de MercadoLibre.',
   robots: { index: false, follow: false },

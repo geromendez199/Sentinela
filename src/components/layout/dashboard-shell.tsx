@@ -13,7 +13,7 @@ export function DashboardShell({ children, orgSlug, orgName, role }: { children:
       <aside className="sticky top-0 z-40 lg:fixed lg:inset-y-0 lg:left-0 lg:flex lg:w-[240px] lg:flex-col lg:overflow-y-auto lg:bg-black">
         <Link href={`/${orgSlug}/overview`} className="hidden items-center justify-center bg-black py-4 lg:flex lg:justify-start lg:px-5 lg:py-7"><BrandLogo /></Link>
         <OrgNav orgSlug={orgSlug} />
-        <div className="mt-auto hidden px-7 pb-7 pt-8 text-xs leading-relaxed text-neutral-500 lg:block">Observá. Entendé. Decidí.<br /><span className="text-[10px]">sentinela · beta</span></div>
+        <div className="mt-auto hidden px-7 pb-7 pt-8 text-xs leading-relaxed text-neutral-500 lg:block">Observá. Entendé. Decidí.<br /><span className="text-[10px]">sentinela · v2 beta</span></div>
       </aside>
       <header className="sticky top-12 z-30 flex min-h-20 flex-wrap items-center justify-between gap-3 border-b bg-white/95 px-5 py-3 backdrop-blur lg:top-0 lg:px-10">
         <div className="min-w-0"><p className="page-eyebrow mb-1">Espacio de trabajo</p><Link href="/" aria-label={`Cambiar espacio: ${orgName}`} className="block truncate text-sm font-semibold hover:underline">{orgName}</Link></div>

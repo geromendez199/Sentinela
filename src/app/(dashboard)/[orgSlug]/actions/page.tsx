@@ -3,6 +3,7 @@ import { hasPermission } from '@/lib/auth/permissions';
 import { createClient } from '@/lib/supabase/server';
 import { Card, EmptyState } from '@/components/ui/card';
 import { ActionApprovalPanel } from '@/components/actions/action-approval-panel';
+import { actionLabel,statusLabel } from '@/lib/ui/labels';
 
 export default async function ActionsPage({ params }: { params: Promise<{ orgSlug: string }> }) {
   const { orgSlug } = await params;
@@ -21,7 +22,7 @@ export default async function ActionsPage({ params }: { params: Promise<{ orgSlu
   return (
     <Card
       title="Acciones"
-      subtitle="MVP: toda escritura a MercadoLibre requiere aprobacion humana y un chequeo de politica justo antes del write."
+      subtitle="Revisá propuestas y borradores. Las acciones externas requieren aprobación humana y una verificación antes de ejecutarse."
     >
       {(data ?? []).length === 0 ? (
         <EmptyState message="Sin acciones registradas." />
@@ -35,8 +36,8 @@ export default async function ActionsPage({ params }: { params: Promise<{ orgSlu
             ) : (
               <li key={action.id} className="card p-3 text-sm">
                 <div className="flex justify-between">
-                  <span className="font-medium">{action.kind}</span>
-                  <span className="muted">{action.status}</span>
+                  <span className="font-medium">{actionLabel(action.kind)}</span>
+                  <span className="muted">{statusLabel(action.status)}</span>
                 </div>
                 {action.error_code && <p className="mt-1 text-xs text-red-600">{action.error_code}</p>}
               </li>

@@ -4,6 +4,7 @@ import { requireOrg } from '@/lib/auth/require-role';
 import { Card } from '@/components/ui/card';
 
 const SECTIONS: Array<{ href: string; label: string; description: string; permission: Permission }> = [
+  { href:'readiness',permission:'org:update',label:'Preparación V2',description:'Conexiones, datos disponibles y pasos para operar.' },
   { href: 'members', permission: 'members:manage', label: 'Miembros', description: 'Personas, roles y permisos del equipo.' },
   { href: 'integrations', permission: 'org:update', label: 'Integraciones', description: 'Cuentas vinculadas y funciones disponibles.' },
   { href: 'notifications', permission: 'org:update', label: 'Notificaciones', description: 'Estado de los avisos de tu operación.' },

@@ -7,7 +7,7 @@ import { Card } from '@/components/ui/card';
 import { DataTable } from '@/components/ui/data-table';
 import { formatDateTime } from '@/lib/utils/format';
 import { SlaCountdown } from '@/components/support/sla-countdown';
-import { statusLabel } from '@/lib/ui/labels';
+import { statusLabel,reputationImpactLabel } from '@/lib/ui/labels';
 
 export default async function ClaimsPage({ params, searchParams }: { params: Promise<{ orgSlug: string }>; searchParams: Promise<ListParams> }) {
   const { orgSlug } = await params;
@@ -55,7 +55,7 @@ export default async function ClaimsPage({ params, searchParams }: { params: Pro
           {
             key: 'affects',
             header: 'Afecta reputacion',
-            render: (row) => row.affects_reputation === null ? 'Sin consultar' : row.affects_reputation ? 'Sí' : 'No',
+            render: (row) => reputationImpactLabel(row.affects_reputation),
           },
           { key: 'due', header: 'Vencimiento / SLA', exportValue: (row) => row.due_date ?? '', render: (row) => <div className="min-w-36"><p className="text-xs">{formatDateTime(row.due_date)}</p>{row.status !== 'closed' && <SlaCountdown dueAt={row.due_date} />}</div> },
         ]}

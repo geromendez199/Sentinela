@@ -3,7 +3,7 @@
 import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { useToast } from '@/components/ui/toast-provider';
-import { statusLabel } from '@/lib/ui/labels';
+import { statusLabel,actionLabel } from '@/lib/ui/labels';
 
 export interface ApprovableAction {
   id: string;
@@ -41,23 +41,25 @@ export function ActionApprovalPanel({ orgSlug, action }: { orgSlug: string; acti
       notify('La acción no pudo completarse. Revisá el detalle del error.', 'error');
       return;
     }
-    setMessage(path.endsWith('/execute') ? 'Solicitud en cola. La ejecución todavía está pendiente.' : path.endsWith('/cancel') ? 'Acción cancelada.' : 'Acción aprobada. Todavía no fue ejecutada.');
-    notify(path.endsWith('/execute') ? 'Solicitud en cola. Seguí su estado desde Acciones.' : path.endsWith('/cancel') ? 'Acción cancelada.' : 'Acción aprobada y lista para ejecutar.');
+    setMessage(path.endsWith('/execute') ? 'Solicitud en cola. La ejecución todavía está pendiente.' : path.endsWith('/cancel') ? 'Acción cancelada.' : action.kind.startsWith('DRAFT_') ? 'Borrador aprobado para uso manual. No fue enviado a Mercado Libre.' : 'Acción aprobada. Todavía no fue ejecutada.');
+    notify(path.endsWith('/execute') ? 'Solicitud en cola. Seguí su estado desde Acciones.' : path.endsWith('/cancel') ? 'Acción cancelada.' : action.kind.startsWith('DRAFT_') ? 'Borrador aprobado para revisión final y uso manual.' : 'Acción aprobada y lista para ejecutar.');
     startTransition(() => router.refresh());
     } catch { setError('No pudimos conectar. Intentá nuevamente.'); notify('Sin conexión. Reintentá cuando vuelva el servicio.', 'error'); }
     finally { setRequesting(false); }
   }
 
   const canApprove = action.status === 'draft' || action.status === 'pending_approval';
-  const canExecute = action.status === 'approved';
+  const internalDraft = action.kind.startsWith('DRAFT_');
+  const canExecute = action.status === 'approved' && !internalDraft;
 
   return (
     <div className="card p-3">
       <div className="flex justify-between text-sm">
-        <span className="font-medium">{action.kind}</span>
+        <span className="font-medium">{actionLabel(action.kind)}</span>
         <span className="muted">{statusLabel(action.status)}</span>
       </div>
       {action.rendered_text && <p className="mt-2 whitespace-pre-wrap text-sm">{action.rendered_text}</p>}
+      {internalDraft&&<p className="muted mt-2 text-xs">Borrador para revisión y uso manual. Aprobarlo no publica una respuesta en Mercado Libre.</p>}
       {message && <p role="status" className="mt-3 text-xs">{message}</p>}
       {error && <p role="alert" className="mt-2 text-xs text-red-600">{error}</p>}
       {pending && <p role="status" className="muted mt-3 text-xs">Procesando la solicitud…</p>}
@@ -70,14 +72,14 @@ export function ActionApprovalPanel({ orgSlug, action }: { orgSlug: string; acti
         >
           Aprobar
         </button>
-        <button
+        {!internalDraft && <button
           type="button"
           disabled={!canExecute || pending}
           onClick={() => void call(`/api/actions/${action.id}/execute`)}
           className="min-h-10 rounded-lg border px-3 py-2 text-xs hover:bg-neutral-100 disabled:opacity-40"
         >
           Ejecutar
-        </button>
+        </button>}
         <button
           type="button"
           disabled={pending || !['draft', 'pending_approval', 'approved'].includes(action.status)}
@@ -87,6 +89,7 @@ export function ActionApprovalPanel({ orgSlug, action }: { orgSlug: string; acti
           Cancelar
         </button>
       </div>
+      {internalDraft&&action.status==='approved'&&action.rendered_text&&<button type="button" onClick={async()=>{try{await navigator.clipboard.writeText(action.rendered_text??'');notify('Borrador aprobado copiado.');}catch{notify('No se pudo copiar. Seleccioná el texto.','error');}}} className="mt-3 min-h-10 rounded-lg border px-3 text-xs">Copiar borrador aprobado</button>}
     </div>
   );
 }

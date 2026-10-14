@@ -51,6 +51,7 @@ export default async function OverviewPage({ params }: { params: Promise<{ orgSl
 
   return (
     <div className="space-y-6">
+      <section className="card p-5"><div className="flex flex-wrap items-center justify-between gap-3"><div><p className="page-eyebrow">Sentinela V2</p><h2 className="mt-2 text-sm font-semibold">Atención, logística y calidad conectadas</h2></div><div className="flex flex-wrap gap-2">{[['support','Bandeja de atención'],['dispatch','Despachos'],['quality','Calidad y CX']].map(([href,label])=><Link key={href} href={`/${orgSlug}/${href}`} className="min-h-10 rounded-lg border px-3 py-2.5 text-xs hover:bg-neutral-100">{label} →</Link>)}</div></div></section>
       <div className="flex flex-wrap items-center justify-between gap-3"><p className="muted text-xs">{accountRows.length ? 'Tu operación, con los últimos datos disponibles.' : 'Conectá tu primera cuenta para empezar.'}</p><RefreshButton /></div>
       {(!accountRows.some(account => account.status === 'active') || backfilling.length > 0) && <GettingStarted orgSlug={orgSlug} connected={accountRows.some(account => account.status !== 'disconnected')} syncing={backfilling.length > 0} ready={Boolean(reputation.data?.length || computations.data?.length)} />}
       <SyncAutoRefresh active={backfilling.length > 0} />
