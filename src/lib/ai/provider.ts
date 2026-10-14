@@ -1,6 +1,7 @@
 import 'server-only';
 import { serverEnv } from '@/lib/env/server';
 import { RetryableError } from '@/lib/meli/errors';
+import { OpenAiProvider } from './openai-provider';
 
 /**
  * Single abstracted LLM/embeddings provider (section 0.2). Swapping providers
@@ -48,6 +49,7 @@ class AnthropicProvider implements AiProvider {
         system: request.system,
         messages: [{ role: 'user', content: request.input }],
       }),
+      signal: AbortSignal.timeout(20_000),
     });
 
     if (response.status === 429 || response.status >= 500) {
@@ -97,6 +99,8 @@ export function getAiProvider(): AiProvider {
       env.AI_EMBEDDING_MODEL ?? 'text-embedding-3-small',
       env.AI_EMBEDDING_DIMENSIONS,
     );
+  } else if (env.AI_PROVIDER === 'openai' && env.AI_API_KEY && env.AI_CLASSIFIER_MODEL) {
+    cached = new OpenAiProvider(env.AI_API_KEY,env.AI_CLASSIFIER_MODEL,env.AI_EMBEDDING_MODEL??'text-embedding-3-small',env.AI_EMBEDDING_DIMENSIONS);
   } else {
     cached = new NullProvider();
   }

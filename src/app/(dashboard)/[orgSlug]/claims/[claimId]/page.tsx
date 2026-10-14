@@ -3,6 +3,13 @@ import { requireOrg } from '@/lib/auth/require-role';
 import { createClient } from '@/lib/supabase/server';
 import { Card, EmptyState } from '@/components/ui/card';
 import { SlaCountdown } from '@/components/support/sla-countdown';
+import { ResponseWorkbench } from '@/components/support/response-workbench';
+import { ResolutionWorkbench } from '@/components/support/resolution-workbench';
+import { ActionApprovalPanel } from '@/components/actions/action-approval-panel';
+import { hasPermission } from '@/lib/auth/permissions';
+import { numericSearch } from '@/lib/ui/list-query';
+import { formatDateTime } from '@/lib/utils/format';
+import { reputationImpactLabel } from '@/lib/ui/labels';
 
 export default async function ClaimDetailPage({
   params,
@@ -13,14 +20,14 @@ export default async function ClaimDetailPage({
   const ctx = await requireOrg(orgSlug);
   const supabase = await createClient();
 
-  const numericClaimId = Number(claimId);
-  if (!Number.isFinite(numericClaimId)) notFound();
+  const numericClaimId = numericSearch(claimId);
+  if (numericClaimId < 0) notFound();
 
   const [claim, drafts] = await Promise.all([
     supabase.from('claims').select('*').eq('org_id', ctx.orgId).eq('claim_id', numericClaimId).maybeSingle(),
     supabase
       .from('action_drafts')
-      .select('id, kind, status, rendered_text, created_at')
+      .select('id, kind, status, rendered_text, requires_approval, created_at')
       .eq('org_id', ctx.orgId)
       .eq('claim_id', numericClaimId)
       .order('created_at', { ascending: false }),
@@ -30,6 +37,13 @@ export default async function ClaimDetailPage({
   }
 
   if (!claim.data) notFound();
+  const accountId=claim.data.meli_account_id;
+  const [messages,order]=await Promise.all([
+    supabase.from('claim_messages').select('id,sender_role,text_sanitized,date_created').eq('org_id',ctx.orgId).eq('meli_account_id',accountId).eq('claim_id',numericClaimId).order('date_created',{ascending:false,nullsFirst:false}).limit(100).throwOnError(),
+    supabase.from('orders').select('order_id,shipment_id,status,total_amount,currency_id').eq('org_id',ctx.orgId).eq('meli_account_id',accountId).eq('order_id',claim.data.order_id??-1).maybeSingle().throwOnError(),
+  ]);
+  const shipment=order.data?.shipment_id?(await supabase.from('shipments').select('shipment_id,status,shipped_at,delivered_at').eq('org_id',ctx.orgId).eq('meli_account_id',accountId).eq('shipment_id',order.data.shipment_id).maybeSingle().throwOnError()).data:null;
+  const evidence=[`Reclamo ${claim.data.claim_id}: ${claim.data.status??'estado no informado'}`, ...(order.data?[`Orden ${order.data.order_id}: ${order.data.status}`]:[]), ...(shipment?[`Envío ${shipment.shipment_id}: ${shipment.status??'estado no informado'}`, ...(shipment.shipped_at?[`Despachado: ${formatDateTime(shipment.shipped_at)}`]:[]), ...(shipment.delivered_at?[`Entrega registrada: ${formatDateTime(shipment.delivered_at)}`]:[])]:[])];
 
   return (
     <div className="space-y-6">
@@ -49,7 +63,7 @@ export default async function ClaimDetailPage({
           </div>
           <div className="flex justify-between">
             <dt className="muted">Afecta reputacion</dt>
-            <dd>{claim.data.affects_reputation ?? 'sin consultar'}</dd>
+            <dd>{reputationImpactLabel(claim.data.affects_reputation)}</dd>
           </div>
           <div className="flex justify-between">
             <dt className="muted">Vence</dt>
@@ -62,19 +76,16 @@ export default async function ClaimDetailPage({
         </dl>
       </Card>
 
-      <Card title="Borradores" subtitle="Todo write a MercadoLibre requiere aprobacion humana explicita">
+      <Card title="Conversación del reclamo" subtitle="Últimos 100 mensajes sincronizados, en orden cronológico.">{messages.data?.length?<ol className="space-y-3">{[...messages.data].reverse().map(message=><li key={message.id} className="rounded-xl border p-4"><p className="muted text-xs">{message.sender_role??'Participante'} · {formatDateTime(message.date_created)}</p><p className="mt-2 whitespace-pre-wrap text-sm">{message.text_sanitized??'Texto no informado'}</p></li>)}</ol>:<EmptyState message="Sin mensajes sincronizados para este reclamo."/>}<ResponseWorkbench orgSlug={orgSlug} accountId={accountId} source="claim" resourceId={String(numericClaimId)} text={claim.data.problem_sanitized} canSave={hasPermission(ctx.role,'actions:approve')}/></Card>
+      <ResolutionWorkbench problem={claim.data.problem_sanitized} evidence={evidence} amount={order.data?.total_amount??null} currency={order.data?.currency_id??null}/>
+
+      <Card title="Borradores" subtitle="Revisá y aprobá el texto antes de utilizarlo. Aprobar un borrador no envía una respuesta.">
         {(drafts.data ?? []).length === 0 ? (
           <EmptyState message="Sin borradores para este reclamo." />
         ) : (
           <ul className="space-y-3 text-sm">
             {(drafts.data ?? []).map((draft) => (
-              <li key={draft.id} className="card p-3">
-                <div className="flex justify-between">
-                  <span className="font-medium">{draft.kind}</span>
-                  <span className="muted">{draft.status}</span>
-                </div>
-                {draft.rendered_text && <p className="mt-2 whitespace-pre-wrap">{draft.rendered_text}</p>}
-              </li>
+              <li key={draft.id}>{hasPermission(ctx.role,'actions:approve')?<ActionApprovalPanel orgSlug={orgSlug} action={draft}/>:<p>{draft.rendered_text??draft.kind}</p>}</li>
             ))}
           </ul>
         )}
